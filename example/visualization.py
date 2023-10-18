@@ -14,7 +14,7 @@ import six  # compatibility between python 2 + 3 = six
 import matplotlib.pyplot as plt
 
 try:
-    import sim as sim
+    import api.sim as sim
 except Exception as e:
     print ('--------------------------------------------------------------')
     print ('"sim.py" could not be imported. This means very probably that')

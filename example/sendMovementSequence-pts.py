@@ -11,7 +11,7 @@
 # Additionally you will need the python math and msgpack modules
 
 try:
-    import sim
+    import api.sim as sim
 except:
     print ('--------------------------------------------------------------')
     print ('"sim.py" could not be imported. This means very probably that')

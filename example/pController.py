@@ -10,7 +10,7 @@
 # in programming/remoteApiBindings/lib/lib
 
 try:
-    import sim
+    import api.sim as sim
 except:
     print ('--------------------------------------------------------------')
     print ('"sim.py" could not be imported. This means very probably that')
