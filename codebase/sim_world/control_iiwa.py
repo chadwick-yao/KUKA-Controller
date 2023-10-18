@@ -3,7 +3,7 @@ import logging
 import common.spacemouse as pyspacemouse
 from common.spacemouse import *
 from typing import Optional, Callable, List, Tuple
-from codebase.control_robot import ROBOT
+from codebase.sim_world.base.control_robot import BaseRobot
 
 import api.sim as sim
 
@@ -44,12 +44,14 @@ class DeviceConfig:
         self.path = path
         self.DeviceNumber = DeviceNumber
 
-class iiwaRobot(ROBOT):
+class iiwaRobot(BaseRobot):
     """ Wrapper for controlling iiwa in CoppeliaSim with SpaceMouse """
     
     def __init__(self,
                  SpaceMouseConf: DeviceConfig,
                  ) -> None:
+        super().__init__()
+
         ## Connect SpaceMouse Device
 
         # show device lists
