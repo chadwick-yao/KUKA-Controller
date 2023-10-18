@@ -878,6 +878,8 @@ if __name__ == "__main__":
     def butt_0(state, buttons, pressed_buttons):
         print("Button 0")
 
+    def butt_1(state, buttons, pressed_buttons):
+        print("Button 1")
 
     def butt_2_3(state, buttons, pressed_buttons):
         print("Button 2 and 3")
@@ -885,7 +887,7 @@ if __name__ == "__main__":
 
     button_callbacks_arr = [
         ButtonCallback([0], butt_0),
-        ButtonCallback([1], lambda state, buttons, pressed_buttons: print("Button 1")),
+        ButtonCallback([1], butt_1),
         # ButtonCallback([2, 3], butt_2_3),
     ]
 
