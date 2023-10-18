@@ -31,7 +31,7 @@ import tensorflow as tf
 from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.ops import data_flow_ops
-from ply import write_xyz_rgb_as_ply
+from common.ply import write_xyz_rgb_as_ply
 from PIL import Image
 
 # progress bars https://github.com/tqdm/tqdm
@@ -45,9 +45,9 @@ except ImportError:
             return args[0]
         return kwargs.get('iterable', None)
 
-from depth_image_encoding import ClipFloatValues
-from depth_image_encoding import FloatArrayToRgbImage
-from depth_image_encoding import FloatArrayToRawRGB
+from common.depth_image_encoding import ClipFloatValues
+from common.depth_image_encoding import FloatArrayToRgbImage
+from common.depth_image_encoding import FloatArrayToRawRGB
 from skimage.transform import resize
 from skimage import img_as_ubyte
 from skimage import img_as_uint

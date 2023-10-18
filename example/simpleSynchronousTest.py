@@ -28,31 +28,32 @@ except:
 import time
 import sys
 
-print ('Program started')
-sim.simxFinish(-1) # just in case, close all opened connections
-clientID=sim.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to CoppeliaSim
-if clientID!=-1:
-    print ('Connected to remote API server')
+def main():
+    print ('Program started')
+    sim.simxFinish(-1) # just in case, close all opened connections
+    clientID=sim.simxStart('127.0.0.1',19997,True,True,5000,5) # Connect to CoppeliaSim
+    if clientID!=-1:
+        print ('Connected to remote API server')
 
-    # enable the synchronous mode on the client:
-    sim.simxSynchronous(clientID,True)
+        # enable the synchronous mode on the client:
+        sim.simxSynchronous(clientID,True)
 
-    # start the simulation:
-    sim.simxStartSimulation(clientID,sim.simx_opmode_blocking)
+        # start the simulation:
+        sim.simxStartSimulation(clientID,sim.simx_opmode_blocking)
 
-    # Now step a few times:
-    for i in range(1,10):
-        if sys.version_info[0] == 3:
-            input('Press <enter> key to step the simulation!')
-        else:
-            raw_input('Press <enter> key to step the simulation!')
-        sim.simxSynchronousTrigger(clientID);
+        # Now step a few times:
+        for i in range(1,10):
+            if sys.version_info[0] == 3:
+                input('Press <enter> key to step the simulation!')
+            else:
+                raw_input('Press <enter> key to step the simulation!')
+            sim.simxSynchronousTrigger(clientID);
 
-    # stop the simulation:
-    sim.simxStopSimulation(clientID,sim.simx_opmode_blocking)
+        # stop the simulation:
+        sim.simxStopSimulation(clientID,sim.simx_opmode_blocking)
 
-    # Now close the connection to CoppeliaSim:
-    sim.simxFinish(clientID)
-else:
-    print ('Failed connecting to remote API server')
-print ('Program ended')
+        # Now close the connection to CoppeliaSim:
+        sim.simxFinish(clientID)
+    else:
+        print ('Failed connecting to remote API server')
+    print ('Program ended')
