@@ -270,6 +270,9 @@ class iiwaRobot(BaseRobot):
             reset=self._reset_state,
         )
 
+    def input2action(self):
+        raise NotImplementedError
+
     @property
     def control_pose(self):
         """ return current pose of SpaceMouse """
