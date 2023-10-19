@@ -186,12 +186,12 @@ class DeviceSpec(object):
         if not self.connected:
             return None
         # read bytes from SpaceMouse
-        import ipdb; ipdb.set_trace()
         ret = self.device.read(self.__bytes_to_read)
+        dof_changed, button_changed = False, False
         # test for nonblocking read
         if (ret):
-            self.process(ret)
-        return self.tuple_state
+            dof_changed, button_changed = self.process(ret)
+        return self.tuple_state, dof_changed, button_changed
     
     def process(self, data):
         """
@@ -291,6 +291,7 @@ class DeviceSpec(object):
                 if run:
                     block_button_callback.callback(self.tuple_state, self.tuple_state.buttons,
                                                    block_button_callback.buttons)
+        return (dof_changed, button_changed)
                     
     def config_set(self, config: Config):
         """ Set new configuration of mouse from Config class """
@@ -848,7 +849,7 @@ def print_state(state):
     """
     if state:
         print(
-            " ".join(
+            "\t".join(
                 [
                     "%4s %+.2f" % (k, getattr(state, k))
                     for k in ["x", "y", "z", "roll", "pitch", "yaw", "t"]

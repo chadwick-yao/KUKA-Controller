@@ -15,6 +15,7 @@ from common.spacemouse import *
 from typing import Optional, Callable, List, Tuple, Union
 from codebase.sim_world.base.control_robot import BaseRobot
 from common.data_utils import *
+from collections import namedtuple
 
 import api.sim as sim
 
@@ -29,8 +30,29 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 ## define your DofCallback funtions & DofCallbackarr
-
+def show_control_state(state: namedtuple):
+    """ Dof event callback funtion """
+    if state:
+        print(
+            "\t".join(
+                [
+                    "%4s %+.4f" % (k, getattr(state, k))
+                    for k in ["x", "y", "z", "roll", "pitch", "yaw"]
+                ]
+            )
+        )
 ## define your ButtonCallback funtion & ButtonCallbackarr
+def show_button_status(state, buttons):
+    """ Button event callback funtion """
+    print(
+        (
+            (
+                "["
+                + " ".join(["%2d, " % buttons[k] for k in range(len(buttons))])
+            )
+            + "]"
+        )
+    )
 
 class DeviceConfig:
     def __init__(self,
@@ -67,6 +89,8 @@ class iiwaRobot(BaseRobot):
                  DataDir: str,
                  DefaultCam: Union[List, str, None] = None,
                  OtherCam: Union[List, str, None] = None,
+                 PosSensitivity: float = 1.0,
+                 RotSensitivity: float = 1.0,
                  ) -> None:
         
         super().__init__(
@@ -106,8 +130,21 @@ class iiwaRobot(BaseRobot):
         self.obj_handle = None
         self.frame_info_list = list()
 
+        self._enable = False
+        self.single_click_and_hold = False
+        self._reset_state = 0
+        self.rotation = np.array([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]])
+        self.pos_sensitivity = PosSensitivity
+        self.rot_sensitivity = RotSensitivity
+
+        # 6-DOF variables
+        self.x, self.y, self.z = 0, 0, 0
+        self.roll, self.pitch, self.yaw = 0, 0, 0
+
         ## launch a listener thread to listen to SpaceMouse
-        
+        self.thread = threading.Thread(target=self.run)
+        self.thread.daemon = True
+        self.thread.start()
         
     def setup_all(self):
         self.setup_robot()
@@ -166,10 +203,22 @@ class iiwaRobot(BaseRobot):
 
     def run(self):
         super().run()
-        ## Read (pos, orient) from SpaceMouse
+        """ Listener method that keeps pulling new message. """
+        while True:
+            if self._enable:
+            ## Read (pos, orient) from SpaceMouse
+                _, dof_changed, button_changed = self.HIDevice.read()
 
-        ## 
-        
+                # button function
+                if button_changed:
+                    if self.control_gripper[0] == 0:    # release left button
+                        self.single_click_and_hold = False
+                    elif self.control_gripper[0] == 1:  # press left button
+                        self.single_click_and_hold = True
+                    elif self.control_gripper[1] == 1:  # press right button
+                        self._reset_state = 1
+                        self._enabled = False
+                        self._reset_internal_state()
     
     def close(self):
         super().close()
@@ -179,9 +228,72 @@ class iiwaRobot(BaseRobot):
         # close the connection to CoppeliaSim:
         sim.simxFinish(self.clientID)
 
+    def start_control(self):
+        self._reset_internal_state()
+        self._reset_state = 0
+        self._enable = True
+
+    def _reset_internal_state(self):
+        """
+        Resets internal state of controller, except for the reset signal.
+        """
+        self.rotation = np.array([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]])
+        # Reset 6-DOF variables
+        self.x, self.y, self.z = 0, 0, 0
+        self.roll, self.pitch, self.yaw = 0, 0, 0
+        # Reset grasp
+        self.single_click_and_hold = False
+
+    def get_controller_state(self):
+        """
+        Grab the current state of the SpaceMouse
+
+            Returns:
+                dict: a dictionary contraining dpos, nor, unmodified orn, grasp, and reset
+        """
+
+        dpos = self.control_pose[:3] * 0.005 * self.pos_sensitivity
+        roll, pitch, yaw = self.control_pose[3:] * 0.005 * self.rot_sensitivity
+
+        # convert RPY to an absolute orientation
+        drot1 = rotation_matrix(angle=-pitch, direction=[1.0, 0, 0], point=None)[:3, :3]
+        drot2 = rotation_matrix(angle=roll, direction=[0, 1.0, 0], point=None)[:3, :3]
+        drot3 = rotation_matrix(angle=yaw, direction=[0, 0, 1.0], point=None)[:3, :3]
+
+        self.rotation = self.rotation.dot(drot1.dot(drot2.dot(drot3)))
+
+        return dict(
+            dpos=dpos,
+            rotation=self.rotation,
+            raw_drotation=np.array([roll, pitch, yaw]),
+            grasp=self.control_gripper,
+            reset=self._reset_state,
+        )
+
+    @property
+    def control_pose(self):
+        """ return current pose of SpaceMouse """
+        return np.array(
+            [
+                getattr(self.HIDevice.tuple_state, k) 
+                for k in ["x", "y", "z", "roll", "pitch", "yaw"]
+            ]
+        )
+    
+    @property
+    def control_gripper(self):
+        """
+        return current gripper commonds
+            1st button to control gripper
+            2nd button to control whether restart
+        """
+        return np.array(getattr(self.HIDevice.tuple_state, "buttons"))
+
 
 if __name__=="__main__":
-    SpaceMouseConf = DeviceConfig()
+    SpaceMouseConf = DeviceConfig(
+        dof_callback = show_control_state
+    )
     robot = iiwaRobot(
         SpaceMouseConf,
         Address = "127.0.0.1",
@@ -190,11 +302,3 @@ if __name__=="__main__":
         TargetName = "target",
         DataDir = "data"
     )
-    robot.setup_robot()
-
-
-# success = pyspacemouse.open()
-# if success:
-#     while True:
-#         state = pyspacemouse.read()
-#         print(state)
