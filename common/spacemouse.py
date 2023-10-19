@@ -1,9 +1,11 @@
 import copy
 import timeit
+import logging
 from collections import namedtuple
 from typing import Callable, Union, List
 from easyhid import Enumeration, HIDException
 
+logger = logging.getLogger(__name__)
 # clock for timing
 high_acc_clock = timeit.default_timer
 
@@ -184,6 +186,7 @@ class DeviceSpec(object):
         if not self.connected:
             return None
         # read bytes from SpaceMouse
+        import ipdb; ipdb.set_trace()
         ret = self.device.read(self.__bytes_to_read)
         # test for nonblocking read
         if (ret):
@@ -698,14 +701,14 @@ def open(
             spec = device_specs[device]
             if dev.vendor_id == spec.hid_id[0] and dev.product_id == spec.hid_id[1]:
                 found_devices.append({"Spec": spec, "HIDDevice": dev})
-                print(f"{device} found")
+                logger.info(f"{device} found!")
 
     else:
-        print("No HID devices detected")
+        logger.info("No HID devices detected")
         return None
 
     if not found_devices:
-        print("No supported devices found")
+        logger.info("No supported devices found")
         return None
     else:
         if len(found_devices) <= DeviceNumber:
@@ -729,6 +732,7 @@ def open(
             new_device.button_callback_arr = button_callback_arr
             # open the device
             new_device.open()
+            logger.info(f"{device} opened!")
             # set nonblocking/blocking mode
             new_device.set_nonblocking_loop = set_nonblocking_loop
             dev.set_nonblocking(set_nonblocking_loop)
@@ -736,7 +740,7 @@ def open(
             _active_device = new_device
             return new_device
 
-    print("Unknown error occured.")
+    logger.info("Unknown error occured.")
     return None
 
 
@@ -891,7 +895,7 @@ if __name__ == "__main__":
         # ButtonCallback([2, 3], butt_2_3),
     ]
 
-    dev = open(dof_callback=print_state, button_callback=print_buttons, button_callback_arr=button_callbacks_arr)
+    dev: DeviceSpec = open(dof_callback=print_state, button_callback=print_buttons, button_callback_arr=button_callbacks_arr)
 
     while True:
         state = dev.read()
