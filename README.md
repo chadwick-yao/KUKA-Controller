@@ -1,6 +1,5 @@
 # coppeliasim-python
 
-
 ## TO DO
 - [x] Implement base robot controlling class.
 - [x] Implement SpaceMouse API to control iiwa.
