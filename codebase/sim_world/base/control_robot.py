@@ -7,7 +7,9 @@ import datetime
 import copy
 import logging
 import pathlib
+import math
 import json
+from common.data_utils import *
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,7 @@ class BaseRobot(metaclass=ABCMeta):
                  TargetName: str,
                  DataDir: str,
                  DefaultCam: Union[List, str, None] = None,
+                 OtherCam: Union[List, str, None] = None,
                  Address: str = "127.0.0.1",
                  Port: int = 19999,
                  ) -> None:
@@ -28,8 +31,10 @@ class BaseRobot(metaclass=ABCMeta):
         self.address = Address
         self.port = Port
         self.default_cam = DefaultCam
+        self.cam_names = OtherCam
         self.meta_data = None
         self.marker_poses = None
+        self.camera_dicts = {}
 
         sim.simxFinish(-1)  # in case, close all existed connections first
         self.clientID = sim.simxStart(
@@ -52,23 +57,62 @@ class BaseRobot(metaclass=ABCMeta):
         self.depth_path = self.data_dir / "depth"
         self.pose_path = self.data_dir / "pose.json"
 
-    @abstractmethod
-    def setup_robot(self):
+    def _setup_robot(self):
         """ set up robot, if available """
-        self.robotHandle = None
-        self.targetHanle = None
+        
+        if self.robot_name is not None:
+            sim_ret, self.robotHandle = sim.simxGetObjectHandle(self.clientID, self.robot_name, sim.simx_opmode_blocking)
+            sim_ret, self.targetHanle = sim.simxGetObjectHandle(self.clientID, self.target_name, sim.simx_opmode_blocking)
+        else:
+            # set robot handle to target object if no robot used
+            sim_ret, self.targetHanle = sim.simxGetObjectHandle(self.clientID, self.target_name, sim.simx_opmode_blocking)
+            self.robotHandle = self.targetHanle
 
-    @abstractmethod
-    def setup_cameras(self):
-        self.camera_dicts = {}
+    def _setup_cameras(self):
+        """ set up sim cameras, if available """
 
-    @abstractmethod
-    def run(self):
-        pass
+        @staticmethod
+        def _get_K(resolution):
+            width, height = resolution
+            view_angle = (54.70 / 180) * math.pi
+            fx = (width / 2.) / math.tan(view_angle / 2)
+            fy = fx
+            cx = width / 2.
+            cy = height / 2.
+            # cam_intrinsics = np.asarray([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
+            cam_intrinsics = np.asarray([[618.62, 0, 320], [0, 618.62, 240], [0, 0, 1]])
+            return cam_intrinsics
+        assert len(self.cam_names) != 0, "No cameras to add, exiting..."
 
-    @abstractmethod
-    def close(self):
-        pass
+        for cam_name in self.cam_names:
+            sim_ret, cam_handle = sim.simxGetObjectHandle(self.clientID, cam_name, sim.simx_opmode_blocking)
+            _, resolution, _ = sim.simxGetVisionSensorImage(self.clientID, cam_handle, 0, sim.simx_opmode_streaming) # Recommended simx_opmode_streaming (the first call) and simx_opmode_buffer (the following calls)
+
+            cam_intrinsic = _get_K(resolution)
+
+            # Get camera pose and intrinsics in simulation
+            sim_ret, cam_position = sim.simxGetObjectPosition(self.clientID, cam_handle, -1, sim.simx_opmode_blocking) # absolute position
+            sim_ret, cam_quat = sim.simxGetObjectQuaternion(self.clientID, cam_handle, -1, sim.simx_opmode_blocking)
+
+            cam_pose = get_pose_mat((cam_position, cam_quat))
+            cam_depth_scale = 1
+            cam_info_dict = {
+                'name': cam_name,
+                'handle': cam_handle,
+                'pose': cam_pose.tolist(),
+                'intrinsics': cam_intrinsic.tolist(),
+                'depth_scale': cam_depth_scale,
+                'im_shape': [resolution[1], resolution[0]]
+            }
+
+            self.camera_dicts[cam_name] = cam_info_dict
+
+    def _close(self):
+        """ kill the connection """
+        # make sure that the last command sent out had time to arrive
+        sim.simxGetPingTime(self.clientID)
+        # close the connection to CoppeliaSim:
+        sim.simxFinish(self.clientID)
 
     def _get_pose(self, obj_handle, use_quat=True):
         """ obtain object pose with position and rotation """
@@ -103,7 +147,7 @@ class BaseRobot(metaclass=ABCMeta):
         else:
             raise NotImplementedError("Unsupported rotation type.")
         
-        time.sleep(0.1) # wait
+        time.sleep(0.05) # wait
 
     def _get_meta(self):
         if self.meta_data is not None:
@@ -186,4 +230,10 @@ class BaseRobot(metaclass=ABCMeta):
 
         return color_img, depth_img, cam_info['name']
 
-    
+    @abstractmethod
+    def run(self):
+        pass
+
+    @abstractmethod
+    def input2action(self):
+        pass

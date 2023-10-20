@@ -77,8 +77,8 @@ class DeviceConfig:
         self.path = path
         self.DeviceNumber = DeviceNumber
 
-class iiwaRobot(BaseRobot):
-    """ Wrapper for controlling iiwa in CoppeliaSim with SpaceMouse """
+class ManipulatorRobot(BaseRobot):
+    """ Wrapper for controlling Manipulator in CoppeliaSim with SpaceMouse """
     
     def __init__(self,
                  SpaceMouseConf: DeviceConfig,
@@ -99,7 +99,8 @@ class iiwaRobot(BaseRobot):
             Address = Address, 
             Port = Port,
             DataDir = DataDir,
-            DefaultCam = DefaultCam
+            DefaultCam = DefaultCam,
+            OtherCam = OtherCam
         )
 
         ## Connect SpaceMouse Device
@@ -122,7 +123,6 @@ class iiwaRobot(BaseRobot):
 
         ## scene 
         self.robot_dicts = {}
-        self.cam_names = OtherCam
 
         assert self.clientID != -1, "Failed to connect to simulation server."
         logger.info(f"Connecting to {self.robot_name} , through address {self.address} and port {self.port}.")
@@ -147,59 +147,8 @@ class iiwaRobot(BaseRobot):
         self.thread.start()
         
     def setup_all(self):
-        self.setup_robot()
-        self.setup_cameras()
-
-    def setup_robot(self):
-        super().setup_robot()
-        """ set up robot, if available """
-        
-        if self.robot_name is not None:
-            sim_ret, self.robotHandle = sim.simxGetObjectHandle(self.clientID, self.robot_name, sim.simx_opmode_blocking)
-            sim_ret, self.targetHanle = sim.simxGetObjectHandle(self.clientID, self.target_name, sim.simx_opmode_blocking)
-        else:
-            # set robot handle to target object if no robot used
-            sim_ret, self.targetHanle = sim.simxGetObjectHandle(self.clientID, self.target_name, sim.simx_opmode_blocking)
-            self.robotHandle = self.targetHanle
-
-    def setup_cameras(self):
-        super().setup_cameras()
-
-        @staticmethod
-        def _get_K(resolution):
-            width, height = resolution
-            view_angle = (54.70 / 180) * math.pi
-            fx = (width / 2.) / math.tan(view_angle / 2)
-            fy = fx
-            cx = width / 2.
-            cy = height / 2.
-            # cam_intrinsics = np.asarray([[fx, 0, cx], [0, fy, cy], [0, 0, 1]])
-            cam_intrinsics = np.asarray([[618.62, 0, 320], [0, 618.62, 240], [0, 0, 1]])
-            return cam_intrinsics
-        assert len(self.cam_names) != 0, "No cameras to add, exiting..."
-
-        for cam_name in self.cam_names:
-            sim_ret, cam_handle = sim.simxGetObjectHandle(self.clientID, cam_name, sim.simx_opmode_blocking)
-            _, resolution, _ = sim.simxGetVisionSensorImage(self.clientID, cam_handle, 0, sim.simx_opmode_streaming) # Recommended simx_opmode_streaming (the first call) and simx_opmode_buffer (the following calls)
-
-            cam_intrinsic = _get_K(resolution)
-
-            # Get camera pose and intrinsics in simulation
-            sim_ret, cam_position = sim.simxGetObjectPosition(self.clientID, cam_handle, -1, sim.simx_opmode_blocking) # absolute position
-            sim_ret, cam_quat = sim.simxGetObjectQuaternion(self.clientID, cam_handle, -1, sim.simx_opmode_blocking)
-
-            cam_pose = get_pose_mat((cam_position, cam_quat))
-            cam_depth_scale = 1
-            cam_info_dict = {
-                'name': cam_name,
-                'handle': cam_handle,
-                'pose': cam_pose.tolist(),
-                'intrinsics': cam_intrinsic.tolist(),
-                'depth_scale': cam_depth_scale,
-                'im_shape': [resolution[1], resolution[0]]
-            }
-
-            self.camera_dicts[cam_name] = cam_info_dict
+        self._setup_robot()
+        # self._setup_cameras()
 
     def run(self):
         super().run()
@@ -219,14 +168,6 @@ class iiwaRobot(BaseRobot):
                         self._reset_state = 1
                         self._enabled = False
                         self._reset_internal_state()
-    
-    def close(self):
-        super().close()
-        """ kill the connection """
-        # make sure that the last command sent out had time to arrive
-        sim.simxGetPingTime(self.clientID)
-        # close the connection to CoppeliaSim:
-        sim.simxFinish(self.clientID)
 
     def start_control(self):
         self._reset_internal_state()
@@ -244,6 +185,29 @@ class iiwaRobot(BaseRobot):
         # Reset grasp
         self.single_click_and_hold = False
 
+    def input2action(self):
+        state: dict = self.get_controller_state
+
+        dpos, rotation, raw_rotation, grasp, reset = [
+            state[key]
+            for key in state.keys()
+        ]
+
+        # if we are resetting, directly return None value
+        if reset:
+            return None, None
+        
+        # some pre=processing FIXME
+
+        action = (dpos, raw_rotation)
+        orig_pose = self._get_pose(self.targetHanle, use_quat=False)
+        target_pose = (action[0] + orig_pose[0], action[1] + orig_pose[1])
+        self._set_pose(self.targetHanle, target_pose)
+        
+
+
+
+    @property
     def get_controller_state(self):
         """
         Grab the current state of the SpaceMouse
@@ -252,8 +216,8 @@ class iiwaRobot(BaseRobot):
                 dict: a dictionary contraining dpos, nor, unmodified orn, grasp, and reset
         """
 
-        dpos = self.control_pose[:3] * 0.005 * self.pos_sensitivity
-        roll, pitch, yaw = self.control_pose[3:] * 0.005 * self.rot_sensitivity
+        dpos = self.control_pose[:3] * 0.01 * self.pos_sensitivity
+        roll, pitch, yaw = self.control_pose[3:] * 0.05 * self.rot_sensitivity
 
         # convert RPY to an absolute orientation
         drot1 = rotation_matrix(angle=-pitch, direction=[1.0, 0, 0], point=None)[:3, :3]
@@ -263,15 +227,12 @@ class iiwaRobot(BaseRobot):
         self.rotation = self.rotation.dot(drot1.dot(drot2.dot(drot3)))
 
         return dict(
-            dpos=dpos,
-            rotation=self.rotation,
-            raw_drotation=np.array([roll, pitch, yaw]),
-            grasp=self.control_gripper,
-            reset=self._reset_state,
+            dpos = dpos,
+            rotation = self.rotation,
+            raw_drotation = np.array([roll, pitch, yaw]),
+            grasp = self.control_gripper,
+            reset = self._reset_state,
         )
-
-    def input2action(self):
-        raise NotImplementedError
 
     @property
     def control_pose(self):
@@ -295,13 +256,20 @@ class iiwaRobot(BaseRobot):
 
 if __name__=="__main__":
     SpaceMouseConf = DeviceConfig(
-        dof_callback = show_control_state
+        # dof_callback = show_control_state
     )
-    robot = iiwaRobot(
+    robot = ManipulatorRobot(
         SpaceMouseConf,
         Address = "127.0.0.1",
         Port = 19999,
         RobotName = "KUKA_iiwa7",
-        TargetName = "target",
+        TargetName = "targetSphere",
         DataDir = "data"
     )
+    robot.start_control()
+    robot.setup_all()
+    robot._reset_internal_state()
+    while True:
+        time.sleep(0.05)
+        robot.input2action()
+        

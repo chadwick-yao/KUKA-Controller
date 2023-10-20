@@ -1,3 +1,9 @@
+import sys
+import os
+import pathlib
+ROOT_DIR = str(pathlib.Path(__file__).parent.parent.parent)
+sys.path.append(ROOT_DIR)
+
 import api.sim as sim
 import time
 
@@ -30,3 +36,5 @@ def control_UR10():
     else:
         print ('Failed connecting to remote API server')
     print ('Program ended')
+
+control_UR10()

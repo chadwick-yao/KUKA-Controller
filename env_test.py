@@ -1,3 +1,3 @@
-from codebase.sim_world.control_iiwa import iiwaRobot, DeviceConfig
+from codebase.sim_world.control_manipulator import ManipulatorRobot, DeviceConfig
 
 iiwaRobot(DeviceConfig())
