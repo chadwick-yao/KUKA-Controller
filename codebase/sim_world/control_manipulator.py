@@ -86,6 +86,7 @@ class ManipulatorRobot(BaseRobot):
                  Port: int,
                  RobotName: str,
                  TargetName: str,
+                 ObjName: Optional[List],
                  DataDir: str,
                  DefaultCam: Union[List, str, None] = None,
                  OtherCam: Union[List, str, None] = None,
@@ -127,7 +128,7 @@ class ManipulatorRobot(BaseRobot):
         assert self.clientID != -1, "Failed to connect to simulation server."
         logger.info(f"Connecting to {self.robot_name} , through address {self.address} and port {self.port}.")
         
-        self.obj_handle = None
+        self.obj_handle = {obj_name: None for obj_name in ObjName}
         self.frame_info_list = list()
 
         self._enable = False
@@ -149,6 +150,14 @@ class ManipulatorRobot(BaseRobot):
     def setup_all(self):
         self._setup_robot()
         # self._setup_cameras()
+
+    def _setup_robot(self):
+        """ setup any object you want here """
+        super()._setup_robot()
+        self.obj_handle = {
+            obj_name: sim.simxGetObjectHandle(self.clientID, obj_name, sim.simx_opmode_blocking) 
+            for obj_name in self.obj_handle.keys()
+        }
 
     def run(self):
         super().run()
@@ -184,6 +193,7 @@ class ManipulatorRobot(BaseRobot):
         self.roll, self.pitch, self.yaw = 0, 0, 0
         # Reset grasp
         self.single_click_and_hold = False
+        self.last_gripper_state = False
 
     def input2action(self):
         state: dict = self.get_controller_state
@@ -203,8 +213,11 @@ class ManipulatorRobot(BaseRobot):
         orig_pose = self._get_pose(self.targetHanle, use_quat=False)
         target_pose = (action[0] + orig_pose[0], action[1] + orig_pose[1])
         self._set_pose(self.targetHanle, target_pose)
-        
 
+        # gripper position setting
+        grasp = 1 if self.single_click_and_hold else -1
+        res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "RG2",
+                                                        sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
 
 
     @property
@@ -262,9 +275,10 @@ if __name__=="__main__":
         SpaceMouseConf,
         Address = "127.0.0.1",
         Port = 19999,
-        RobotName = "KUKA_iiwa7",
+        RobotName = "LBR_iiwa_7_R800",
         TargetName = "targetSphere",
-        DataDir = "data"
+        DataDir = "data",
+        ObjName = ["FrankaGripper"]
     )
     robot.start_control()
     robot.setup_all()

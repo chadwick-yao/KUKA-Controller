@@ -1,3 +1,7 @@
+"""
+Forked from git@github.com:JakubAndrysek/PySpaceMouse.git
+"""
+
 import copy
 import timeit
 import logging

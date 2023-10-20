@@ -57,6 +57,7 @@ class BaseRobot(metaclass=ABCMeta):
         self.depth_path = self.data_dir / "depth"
         self.pose_path = self.data_dir / "pose.json"
 
+    @abstractmethod
     def _setup_robot(self):
         """ set up robot, if available """
         
