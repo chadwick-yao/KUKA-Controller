@@ -65,7 +65,7 @@ class Config:
 ```
 callback是所有类型按键的回调函数，dof_callback和button_callback是所有一类的按键均会触发的回调函数，dof_callback_arr和button_callback_arr是各类按键内对应按钮的触发回调函数。
 
-##远程操控机器人
+## 远程操控机器人
 
 ### IK Mode
 在仿真环境中，把写好的IK lua代码覆盖机械臂初始代码。
