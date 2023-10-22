@@ -1,6 +1,6 @@
-# SpaceMouse to Control Robots in CoppeliaSim
+# SpaceMouse控制CoppeliaSim仿真环境的机器人
 
-## Connect the HID (SpaceMouse) 
+## 连接到HID (SpaceMouse) 
 
 ### 定义设备信息
 首先需要对每一款设备定义好设备信息，包括HID ID，product ID以及按钮mapping的信息，这里以SpaceMouse Wireless为例：
@@ -65,7 +65,7 @@ class Config:
 ```
 callback是所有类型按键的回调函数，dof_callback和button_callback是所有一类的按键均会触发的回调函数，dof_callback_arr和button_callback_arr是各类按键内对应按钮的触发回调函数。
 
-## Manipulate CoppeliaSim Robots Remotely
+##远程操控机器人
 
 ### IK Mode
 在仿真环境中，把写好的IK lua代码覆盖机械臂初始代码。
@@ -155,3 +155,26 @@ def input2action(self):
                                                     sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
 ```
 后续会继续写mobile robots类，以及除了IK控制以外的控制方式。
+
+远程控制循环：
+```python
+if __name__=="__main__":
+    SpaceMouseConf = DeviceConfig(
+        # dof_callback = show_control_state
+    )
+    robot = ManipulatorRobot(
+        SpaceMouseConf,
+        Address = "127.0.0.1",
+        Port = 19999,
+        RobotName = "LBR_iiwa_7_R800",
+        TargetName = "targetSphere",
+        DataDir = "data",
+        ObjName = ["RG2"]
+    )
+    robot.start_control()
+    robot.setup_all()
+    robot._reset_internal_state()
+    while True:
+        time.sleep(0.05)
+        robot.input2action()
+```

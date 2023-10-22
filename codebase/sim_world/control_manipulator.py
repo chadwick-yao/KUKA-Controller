@@ -278,7 +278,7 @@ if __name__=="__main__":
         RobotName = "LBR_iiwa_7_R800",
         TargetName = "targetSphere",
         DataDir = "data",
-        ObjName = ["FrankaGripper"]
+        ObjName = ["RG2"]
     )
     robot.start_control()
     robot.setup_all()
