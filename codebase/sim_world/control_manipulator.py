@@ -224,7 +224,7 @@ class ManipulatorRobot(BaseRobot):
         res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "RG2",
                                                         sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
         
-        time.sleep(0.01) # wait
+        # time.sleep(0.01) # wait
 
 
     @property
@@ -287,10 +287,19 @@ if __name__=="__main__":
         DataDir = "data",
         ObjName = ["RG2"]
     )
+
+    # cnt = 0
+    # start_time = time.time() * 1000
+
     robot.setup_all()
     robot.start_control()
     while True:
-        time.sleep(0.01)
+        # cnt += 1
+        # if cnt % 1000 == 0:
+        #     cnt = 0
+        #     end_time = time.time() * 1000
+        #     print(f"Execute one time input2action need {(end_time - start_time - 0.02*1000) / 1000} ms averagely.")
+        #     start_time = end_time
         robot.input2action()
-        # print(robot._get_pose(robot.targetHanle, False))
+        
         
