@@ -49,6 +49,104 @@ res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self
 time.sleep(0.01) # wait
 ```
 
+当把信息传递到仿真环境并set好EEF的位置和角度后，仿真环境会进行IK调整机械臂的关节位置，具体代码如下（初始化函数，actuate函数以及cleanup函数）：
+
+```lua
+function sysCall_init()
+    -- Build a kinematic chain and 2 IK groups (undamped and damped) inside of the IK plugin environment,
+    -- based on the kinematics of the robot in the scene:
+    -- There is a simple way, and a more elaborate way (but which gives you more options/flexibility):
+
+    -- Simple way:
+    local simBase=sim.getObject('.')
+    local simTip=sim.getObject('./tip')
+    local simTarget=sim.getObject('./target')
+
+    ikEnv=simIK.createEnvironment() -- create an IK environment
+    ikGroup_undamped=simIK.createGroup(ikEnv) -- create an IK group
+    simIK.setGroupCalculation(ikEnv,ikGroup_undamped,simIK.method_pseudo_inverse,0,6) -- set its resolution method to undamped
+    simIK.addElementFromScene(ikEnv,ikGroup_undamped,simBase,simTip,simTarget,simIK.constraint_pose) -- create an IK element based on the scene content
+    ikGroup_damped=simIK.createGroup(ikEnv) -- create another IK group
+    simIK.setGroupCalculation(ikEnv,ikGroup_damped,simIK.method_damped_least_squares,1,99) -- set its resolution method to damped
+    simIK.addElementFromScene(ikEnv,ikGroup_damped,simBase,simTip,simTarget,simIK.constraint_pose) -- create an IK element based on the scene content
+    
+    -- Elaborate way:
+    --[[
+    simBase=sim.getObject('.')
+    simTip=sim.getObject('./tip')
+    simTarget=sim.getObject('./target')
+    simJoints={}
+    for i=1,7,1 do
+        simJoints[i]=sim.getObject('./joint',{index=i-1})
+    end
+    ikJoints={}
+
+    ikEnv=simIK.createEnvironment() -- create an IK environment
+    ikBase=simIK.createDummy(ikEnv) -- create a dummy in the IK environemnt
+    simIK.setObjectMatrix(ikEnv,ikBase,-1,sim.getObjectMatrix(simBase,sim.handle_world)) -- set that dummy into the same pose as its CoppeliaSim counterpart
+    local parent=ikBase
+    for i=1,#simJoints,1 do -- loop through all joints
+        ikJoints[i]=simIK.createJoint(ikEnv,simIK.jointtype_revolute) -- create a joint in the IK environment
+        simIK.setJointMode(ikEnv,ikJoints[i],simIK.jointmode_ik) -- set it into IK mode
+        local cyclic,interv=sim.getJointInterval(simJoints[i])
+        simIK.setJointInterval(ikEnv,ikJoints[i],cyclic,interv) -- set the same joint limits as its CoppeliaSim counterpart joint
+        simIK.setJointPosition(ikEnv,ikJoints[i],sim.getJointPosition(simJoints[i])) -- set the same joint position as its CoppeliaSim counterpart joint
+        simIK.setObjectMatrix(ikEnv,ikJoints[i],-1,sim.getObjectMatrix(simJoints[i],sim.handle_world)) -- set the same object pose as its CoppeliaSim counterpart joint
+        simIK.setObjectParent(ikEnv,ikJoints[i],parent,true) -- set its corresponding parent
+        parent=ikJoints[i]
+    end
+    ikTip=simIK.createDummy(ikEnv) -- create the tip dummy in the IK environment
+    simIK.setObjectMatrix(ikEnv,ikTip,-1,sim.getObjectMatrix(simTip,sim.handle_world)) -- set that dummy into the same pose as its CoppeliaSim counterpart
+    simIK.setObjectParent(ikEnv,ikTip,parent,true) -- attach it to the kinematic chain
+    ikTarget=simIK.createDummy(ikEnv) -- create the target dummy in the IK environment
+    simIK.setObjectMatrix(ikEnv,ikTarget,-1,sim.getObjectMatrix(simTarget,sim.handle_world)) -- set that dummy into the same pose as its CoppeliaSim counterpart
+    simIK.setTargetDummy(ikEnv,ikTip,ikTarget) -- link the two dummies
+    ikGroup_undamped=simIK.createGroup(ikEnv) -- create an IK group
+    simIK.setGroupCalculation(ikEnv,ikGroup_undamped,simIK.method_pseudo_inverse,0,6) -- set its resolution method to undamped
+    simIK.setGroupFlags(ikEnv,ikGroup_undamped,1+2+4+8) -- make sure the robot doesn't shake if the target position/orientation wasn't reached
+    local ikElementHandle=simIK.addElement(ikEnv,ikGroup_undamped,ikTip) -- add an IK element to that IK group
+    simIK.setElementBase(ikEnv,ikGroup_undamped,ikElementHandle,ikBase) -- specify the base of that IK element
+    simIK.setElementConstraints(ikEnv,ikGroup_undamped,ikElementHandle,simIK.constraint_pose) -- specify the constraints of that IK element
+    ikGroup_damped=simIK.createGroup(ikEnv) -- create another IK group
+    simIK.setGroupCalculation(ikEnv,ikGroup_damped,simIK.method_damped_least_squares,1,99) -- set its resolution method to damped
+    local ikElementHandle=simIK.addElement(ikEnv,ikGroup_damped,ikTip) -- add an IK element to that IK group
+    simIK.setElementBase(ikEnv,ikGroup_damped,ikElementHandle,ikBase) -- specify the base of that IK element
+    simIK.setElementConstraints(ikEnv,ikGroup_damped,ikElementHandle,simIK.constraint_pose) -- specify the constraints of that IK element
+    --]]
+end
+
+function sysCall_actuation()
+    -- There is a simple way, and a more elaborate way (but which gives you more options/flexibility):
+    
+    -- Simple way:
+    if simIK.handleGroup(ikEnv,ikGroup_undamped,{syncWorlds=true})~=simIK.result_success then -- try to solve with the undamped method
+        -- the position/orientation could not be reached.
+        simIK.handleGroup(ikEnv,ikGroup_damped,{syncWorlds=true,allowError=true}) -- try to solve with the damped method
+    end
+    
+    -- Elaborate way:
+    --[[
+    simIK.setObjectMatrix(ikEnv,ikTarget,ikBase,sim.getObjectMatrix(simTarget,simBase)) -- reflect the pose of the target dummy to its counterpart in the IK environment
+
+    if simIK.handleGroup(ikEnv,ikGroup_undamped)~=simIK.result_success then -- try to solve with the undamped method
+        -- the position/orientation could not be reached.
+        simIK.handleGroup(ikEnv,ikGroup_damped) -- try to solve with the damped method
+    end
+    
+    for i=1,#simJoints,1 do
+        sim.setJointPosition(simJoints[i],simIK.getJointPosition(ikEnv,ikJoints[i])) -- apply the joint values computed in the IK environment to their CoppeliaSim joint counterparts
+    end
+    --]]
+end 
+
+function sysCall_cleanup() 
+    simIK.eraseEnvironment(ikEnv) -- erase the IK environment
+end 
+
+```
+
+
+
 ## 连接到HID (SpaceMouse) 
 
 ### 定义设备信息
