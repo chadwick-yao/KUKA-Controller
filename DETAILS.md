@@ -1,6 +1,53 @@
 # SpaceMouse控制CoppeliaSim仿真环境的机器人
 
 ## 控制回路
+```python
+if __name__=="__main__":
+    SpaceMouseConf = DeviceConfig(
+        # dof_callback = show_control_state
+    )
+    robot = ManipulatorRobot(
+        SpaceMouseConf,
+        Address = "127.0.0.1",
+        Port = 19999,
+        RobotName = "LBR_iiwa_7_R800",
+        TargetName = "targetSphere",
+        DataDir = "data",
+        ObjName = ["RG2"]
+    )
+    robot.setup_all()
+    robot.start_control()
+    while True:
+        time.sleep(0.01)
+        robot.input2action()
+```
+
+在连接仿真机器人后，会通过`input2action`函数执行来自于3D鼠标的指令（position + rotation），伪代码如下：
+
+```python
+# 1. obtain current status of SpaceMouse
+state: dict = self.get_controller_state
+
+dpos, rotation, raw_rotation, grasp, reset = [
+    state[key]
+    for key in state.keys()
+]
+# 2. current pose + action from SpaceMouse = next timestep pose
+action = (dpos, raw_rotation)
+orig_pose = self._get_pose(self.targetHanle, use_quat=False)
+target_pose = (action[0] + orig_pose[0], action[1] + orig_pose[1])
+self._set_pose(self.targetHanle, target_pose)
+```
+
+接着会处理按钮指令，如下，执行结束之后会delay一段时间，这是为了解决通信以及仿真延迟问题：
+
+```python
+# gripper position setting
+grasp = 1 if self.single_click_and_hold else -1
+res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "RG2",
+                                                sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
+time.sleep(0.01) # wait
+```
 
 ## 连接到HID (SpaceMouse) 
 
@@ -157,26 +204,3 @@ def input2action(self):
                                                     sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
 ```
 后续会继续写mobile robots类，以及除了IK控制以外的控制方式。
-
-远程控制循环：
-```python
-if __name__=="__main__":
-    SpaceMouseConf = DeviceConfig(
-        # dof_callback = show_control_state
-    )
-    robot = ManipulatorRobot(
-        SpaceMouseConf,
-        Address = "127.0.0.1",
-        Port = 19999,
-        RobotName = "LBR_iiwa_7_R800",
-        TargetName = "targetSphere",
-        DataDir = "data",
-        ObjName = ["RG2"]
-    )
-    robot.start_control()
-    robot.setup_all()
-    robot._reset_internal_state()
-    while True:
-        time.sleep(0.05)
-        robot.input2action()
-```

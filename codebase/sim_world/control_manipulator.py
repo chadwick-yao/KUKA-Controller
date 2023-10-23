@@ -169,11 +169,11 @@ class ManipulatorRobot(BaseRobot):
 
                 # button function
                 if button_changed:
-                    if self.control_gripper[0] == 0:    # release left button
+                    if self.control_gripper[1] == 0:    # release left button
                         self.single_click_and_hold = False
-                    elif self.control_gripper[0] == 1:  # press left button
+                    elif self.control_gripper[1] == 1:  # press left button
                         self.single_click_and_hold = True
-                    elif self.control_gripper[1] == 1:  # press right button
+                    elif self.control_gripper[0] == 1:  # press right button
                         self._reset_state = 1
                         self._enabled = False
                         self._reset_internal_state()
@@ -194,6 +194,11 @@ class ManipulatorRobot(BaseRobot):
         # Reset grasp
         self.single_click_and_hold = False
         self.last_gripper_state = False
+
+        # (array([ 0.125     , -0.275114  ,  0.39874786]), array([3.1415925 , 0.08726646, 3.1415925 ]))
+        target_pose = (np.array([ 0.125     , -0.275114  ,  0.39874786]), np.array([3.1415925 , 0.08726646, 3.1415925 ]))
+        self._set_pose(self.targetHanle, target_pose)
+        time.sleep(0.01) # wait
 
     def input2action(self):
         state: dict = self.get_controller_state
@@ -218,6 +223,8 @@ class ManipulatorRobot(BaseRobot):
         grasp = 1 if self.single_click_and_hold else -1
         res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "RG2",
                                                         sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
+        
+        time.sleep(0.01) # wait
 
 
     @property
@@ -280,10 +287,10 @@ if __name__=="__main__":
         DataDir = "data",
         ObjName = ["RG2"]
     )
-    robot.start_control()
     robot.setup_all()
-    robot._reset_internal_state()
+    robot.start_control()
     while True:
-        time.sleep(0.05)
+        time.sleep(0.01)
         robot.input2action()
+        # print(robot._get_pose(robot.targetHanle, False))
         

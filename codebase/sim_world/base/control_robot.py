@@ -148,7 +148,6 @@ class BaseRobot(metaclass=ABCMeta):
         else:
             raise NotImplementedError("Unsupported rotation type.")
         
-        time.sleep(0.05) # wait
 
     def _get_meta(self):
         if self.meta_data is not None:
