@@ -169,14 +169,14 @@ class ManipulatorRobot(BaseRobot):
 
                 # button function
                 if button_changed:
-                    if self.control_gripper[1] == 0:    # release left button
+                    if self.control_gripper[0] == 0:    # release left button
                         self.single_click_and_hold = False
-                    elif self.control_gripper[1] == 1:  # press left button
+                    elif self.control_gripper[0] == 1:  # press left button
                         self.single_click_and_hold = True
-                    elif self.control_gripper[0] == 1:  # press right button
+                    if self.control_gripper[1] == 1:  # press right button
                         self._reset_state = 1
-                        self._enabled = False
-                        self._reset_internal_state()
+                        self._enable = False
+
 
     def start_control(self):
         self._reset_internal_state()
@@ -197,7 +197,11 @@ class ManipulatorRobot(BaseRobot):
 
         # (array([ 0.125     , -0.275114  ,  0.39874786]), array([3.1415925 , 0.08726646, 3.1415925 ]))
         target_pose = (np.array([ 0.125     , -0.275114  ,  0.39874786]), np.array([3.1415925 , 0.08726646, 3.1415925 ]))
+        # block (array([ 0.12800001, -0.27599999,  0.22499999]), array([-3.51055849e-17,  5.06398772e-18,  1.22060484e-20]))
+        sim_ret, block_handle = sim.simxGetObjectHandle(self.clientID, "block", sim.simx_opmode_blocking)
+        block_pose = (np.array([ 0.128, -0.276,  0.225]), np.array([0, 0, 0]))
         self._set_pose(self.targetHanle, target_pose)
+        self._set_pose(block_handle, target_pose)
         time.sleep(0.01) # wait
 
     def input2action(self):
@@ -213,7 +217,8 @@ class ManipulatorRobot(BaseRobot):
             return None, None
         
         # some pre=processing FIXME
-
+        dpos = dpos * np.array([-1, -1, 1])
+        raw_rotation[0], raw_rotation[1] = raw_rotation[1], raw_rotation[0]
         action = (dpos, raw_rotation)
         orig_pose = self._get_pose(self.targetHanle, use_quat=False)
         target_pose = (action[0] + orig_pose[0], action[1] + orig_pose[1])
@@ -225,6 +230,10 @@ class ManipulatorRobot(BaseRobot):
                                                         sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
         
         # time.sleep(0.01) # wait
+        if self._reset_state:
+            self._reset_state = 0
+            self._enable = True
+            self._reset_internal_state()
 
 
     @property

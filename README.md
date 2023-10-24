@@ -7,8 +7,8 @@
     - [x] Dof contralling
     - [ ] Button controlling, i.e restart or grip
         - [x] callback
-        - [ ] grip controlling
-        - [ ] reset
+        - [x] grip controlling
+        - [x] reset
 - [ ] Data Collection Base class
 - [ ] Real world. (Real machine contral)
 
