@@ -49,15 +49,15 @@ $ python common/spacemouse.py
 ### SpaceMouse to Manipulate Robots in SimEnv
 
 ```bash
-$ pthon simTest.py
+$ python simTest.py
 ```
 
 ## TO DO
 - [x] Implement base robot controlling class.
 - [x] Implement SpaceMouse API to control iiwa.
     - [x] thread to listen SpaceMouse
-    - [x] Dof contralling
-    - [ ] Button controlling, i.e restart or grip
+    - [x] Dof controlling
+    - [x] Button controlling, i.e restart or grip
         - [x] callback
         - [x] grip controlling
         - [x] reset
