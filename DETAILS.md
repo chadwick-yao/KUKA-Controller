@@ -46,7 +46,6 @@ self._set_pose(self.targetHanle, target_pose)
 grasp = 1 if self.single_click_and_hold else -1
 res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "RG2",
                                                 sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
-time.sleep(0.01) # wait
 ```
 
 当把信息传递到仿真环境并set好EEF的位置和角度后，仿真环境会进行IK调整机械臂的关节位置，具体代码如下（初始化函数，actuate函数以及cleanup函数）：

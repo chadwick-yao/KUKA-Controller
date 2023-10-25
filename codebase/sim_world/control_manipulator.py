@@ -133,6 +133,8 @@ class ManipulatorRobot(BaseRobot):
 
         self._enable = False
         self.single_click_and_hold = False
+        self.gripper_changing = False
+        self.CloseOrOpen = "close"
         self._reset_state = 0
         self.rotation = np.array([[-1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, -1.0]])
         self.pos_sensitivity = PosSensitivity
@@ -155,7 +157,7 @@ class ManipulatorRobot(BaseRobot):
         """ setup any object you want here """
         super()._setup_robot()
         self.obj_handle = {
-            obj_name: sim.simxGetObjectHandle(self.clientID, obj_name, sim.simx_opmode_blocking) 
+            obj_name: sim.simxGetObjectHandle(self.clientID, obj_name, sim.simx_opmode_blocking)[1]
             for obj_name in self.obj_handle.keys()
         }
 
@@ -172,6 +174,8 @@ class ManipulatorRobot(BaseRobot):
                     if self.control_gripper[0] == 0:    # release left button
                         self.single_click_and_hold = False
                     elif self.control_gripper[0] == 1:  # press left button
+                        if not self.single_click_and_hold: # 0 -> 1 
+                            self.gripper_changing = True
                         self.single_click_and_hold = True
                     if self.control_gripper[1] == 1:  # press right button
                         self._reset_state = 1
@@ -196,7 +200,7 @@ class ManipulatorRobot(BaseRobot):
         self.last_gripper_state = False
 
         # (array([ 0.125     , -0.275114  ,  0.39874786]), array([3.1415925 , 0.08726646, 3.1415925 ]))
-        target_pose = (np.array([ 0.125     , -0.275114  ,  0.39874786]), np.array([3.1415925 , 0.08726646, 3.1415925 ]))
+        target_pose = (np.array([ 0.125     , -0.275114  ,  0.39874786]), np.array([3.1415925 , 0, 3.1415925 ]))
         # block (array([ 0.12800001, -0.27599999,  0.22499999]), array([-3.51055849e-17,  5.06398772e-18,  1.22060484e-20]))
         sim_ret, block_handle = sim.simxGetObjectHandle(self.clientID, "block", sim.simx_opmode_blocking)
         block_pose = (np.array([ 0.128, -0.276,  0.225]), np.array([0, 0, 0]))
@@ -225,9 +229,17 @@ class ManipulatorRobot(BaseRobot):
         self._set_pose(self.targetHanle, target_pose)
 
         # gripper position setting
-        grasp = 1 if self.single_click_and_hold else -1
-        res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "RG2",
-                                                        sim.sim_scripttype_childscript,'rg2_OpenClose',[grasp],[],[],b'',sim.simx_opmode_blocking)
+
+        if self.gripper_changing:
+            self.gripper_changing = False
+            if self.CloseOrOpen == "close":
+                grasp = -1
+                self.CloseOrOpen = "open"
+            elif self.CloseOrOpen == "open":
+                grasp = 1
+                self.CloseOrOpen = "close"
+            res, retInts, retFloats, retStrings, retBuffer = sim.simxCallScriptFunction(self.clientID, "ROBOTIQ_85",
+                                                            sim.sim_scripttype_childscript,'ROBOTIQ_CloseOpen',[grasp],[],[],b'',sim.simx_opmode_blocking)
         
         # time.sleep(0.01) # wait
         if self._reset_state:
@@ -294,7 +306,7 @@ if __name__=="__main__":
         RobotName = "LBR_iiwa_7_R800",
         TargetName = "targetSphere",
         DataDir = "data",
-        ObjName = ["RG2"]
+        ObjName = ["ROBOTIQ_85"]
     )
 
     # cnt = 0
@@ -310,5 +322,4 @@ if __name__=="__main__":
         #     print(f"Execute one time input2action need {(end_time - start_time - 0.02*1000) / 1000} ms averagely.")
         #     start_time = end_time
         robot.input2action()
-        
         
