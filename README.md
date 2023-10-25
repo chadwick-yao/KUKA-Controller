@@ -1,10 +1,11 @@
+# Coppeliasim-Python
+
+Coppeliasim-Python provides users an easy tool to manipulate robots in CoppeliaSim with SpaceMouse (3D Mouse). 
+
 <div align="center">
     <img src="assets/demo.gif" style="width: 200px;"  />
 </div>
 
-# Coppeliasim-Python
-
-Coppeliasim-Python provides users an easy tool to manipulate robots in CoppeliaSim with SpaceMouse (3D Mouse). 
 
 ## Usage
 
