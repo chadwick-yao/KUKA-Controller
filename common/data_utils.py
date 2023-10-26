@@ -135,3 +135,15 @@ def unit_vector(data, axis=None, out=None):
     data /= length
     if out is None:
         return data
+    
+def String2Double(message: str, size: int):
+    """ Convert string type to double type """
+
+    strVals = message.split("_")
+    assert size <= len(strVals), f"You're trying to obtain {size} numbers which is out of range."
+    
+    try:
+        doubleVals = [float(strVals[idx]) for idx in range(size)]
+        return doubleVals
+    except ValueError as e:
+        raise e("Unsupported value to convert.")
