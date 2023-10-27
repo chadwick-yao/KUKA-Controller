@@ -1,24 +1,33 @@
 import sys
-from codebase.real_world.utils.mySock import mySock
+from socket import socket
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class Setters(object):
-
-    def __init__(self,mysoc: mySock):
-        self.mysoc=mysoc
+    def __init__(self, sock: socket):
+        self.sock = sock
         self.cmd_list = [
-            'blueOff', 'blueOn', 'pin1off', 'pin1on',
-            'pin2off', 'pin2on', 'pin11off', 'pin11on',
-            'pin12off', 'pin12on'
+            "blueOff",
+            "blueOn",
+            "pin1off",
+            "pin1on",
+            "pin2off",
+            "pin2on",
+            "pin11off",
+            "pin11on",
+            "pin12off",
+            "pin12on",
         ]
 
-    def send(self,data):
-        data = data+'\n'
-        self.mysoc.send(data)
-        message = self.mysoc.receive()
-        print(message)
+    def set_OnOff(self, command: str):
+        assert command in self.cmd_list, "Unsupported Commonds."
+
+        command = command + "\n"
+
+        self.sock.send(command.encode("utf-8"))
+        message = self.sock.recv(1024).decode("utf-8")
+
+        logger.info(f"Got message: {message}, after doing {command}")
         sys.stdout.flush()
-
-    def set_OnOff(self, cmd):
-        assert cmd in self.cmd_list, "Unsupported Commonds."
-
-        self.send(cmd)
