@@ -5,11 +5,17 @@ from codebase.real_world.utils.setters import Setters
 from codebase.real_world.utils.RealTime import RealTime
 from codebase.real_world.utils.PTP import PTP
 from typing import Tuple, Union
+import common.spacemouse as pyspacemouse
+from common.spacemouse import DeviceSpec
+import threading
 
 
 class iiwaPy3(BaseClient):
     def __init__(
         self,
+        SpaceMouseConf: DeviceSpec,
+        PosSensibility: float,
+        RotSensitivity: float,
         host: str = "127.0.0.1",
         port: int = 30001,
         trans: Tuple = (0, 0, 0, 0, 0, 0),
@@ -23,6 +29,31 @@ class iiwaPy3(BaseClient):
         self.rtl = RealTime(self.sock)
         self.ptp = PTP(self.sock)
         self.TCPtrans = trans
+
+        HID = pyspacemouse.open(
+            callback=SpaceMouseConf.callback,
+            dof_callback=SpaceMouseConf.dof_callback,
+            dof_callback_arr=SpaceMouseConf.dof_callback_arr,
+            button_callback=SpaceMouseConf.button_callback,
+            button_callback_arr=SpaceMouseConf.button_callback_arr,
+            set_nonblocking_loop=SpaceMouseConf.set_nonblocking_loop,
+            device=SpaceMouseConf.device,
+            path=SpaceMouseConf.path,
+            DeviceNumber=SpaceMouseConf.DeviceNumber,
+        )
+
+        self.HIDevice = HID
+        self.pos_sensitivity = PosSensibility
+        self.rot_sensitivity = RotSensitivity
+        self.x, self.y, self.z = 0, 0, 0
+        self.roll, self.pitch, self.yaw = 0, 0, 0
+
+        self.thread = threading.Thread(target=self.run)
+        self.thread.daemon = True
+        self.thread.start()
+
+    def run(self):
+        raise NotImplementedError
 
     # PTP motion
     """
