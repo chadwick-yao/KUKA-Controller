@@ -7,7 +7,7 @@ class Getters(object):
         self.sock = sock
         self.retry = iter
 
-    def _get_data(self, command, size):
+    def _get_data(self, command: str, size):
         command = command + "\n"
         for _ in range(self.retry):
             self.sock.send(command.encode("utf-8"))
