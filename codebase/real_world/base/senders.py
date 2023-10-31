@@ -1,5 +1,5 @@
 import math
-from common.data_utils import String2Double
+from utils.data_utils import String2Double
 from socket import socket
 
 

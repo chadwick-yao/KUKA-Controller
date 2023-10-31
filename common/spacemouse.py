@@ -4,6 +4,7 @@ Forked from git@github.com:JakubAndrysek/PySpaceMouse.git
 
 import copy
 import timeit
+import numpy as np
 import logging
 from collections import namedtuple
 from typing import Callable, Union, List
@@ -201,6 +202,25 @@ class DeviceSpec(object):
     def state(self):
         """Return the current value of read()"""
         return self.read()
+
+    @property
+    def control_pose(self):
+        """return current pose of SpaceMouse"""
+        return np.array(
+            [
+                getattr(self.tuple_state, k)
+                for k in ["x", "y", "z", "roll", "pitch", "yaw"]
+            ]
+        )
+
+    @property
+    def control_gripper(self):
+        """
+        return current gripper commonds
+            1st button to control gripper
+            2nd button to control whether restart
+        """
+        return np.array(getattr(self.tuple_state, "buttons"))
 
     def open(self):
         if self.device:

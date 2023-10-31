@@ -1,8 +1,8 @@
 import math
 import sys
 import time
-from codebase.real_world.utils.senders import Senders
-from codebase.real_world.utils.getters import Getters
+from codebase.real_world.base.getters import Getters
+from codebase.real_world.base.senders import Senders
 from socket import socket
 
 

@@ -19,8 +19,11 @@ Coppeliasim-Python provides users an easy tool to manipulate robots in CoppeliaS
 **udev rules**: In order for hidapi to open the device without sudo, we need to do the following steps. First of all, create a rule file xx-spacemouse.rules under the folder /etc/udev/rules.d/ (Replace xx with a number larger than 50).
 
 ```bash
-KERNEL=="hidraw*", ATTRS{idVendor}=="256f", ATTRS{idProduct}=="c62e", MODE="0666", GROUP="plugdev"
-SUBSYSTEM=="usb", ATTRS{idVendor}=="256f", ATTRS{idProduct}=="c62e", MODE="0666", GROUP="plugdev"
+sudo touch /etc/udev/rules.d/77-spacemouse.rules
+
+echo "KERNEL==\"hidraw*\", ATTRS{idVendor}==\"256f\", ATTRS{idProduct}==\"c62e\", MODE=\"0666\", GROUP=\"plugdev\"" > /etc/udev/rules.d/77-spacemouse.rules
+
+echo "SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"256f\", ATTRS{idProduct}==\"c62e\", MODE=\"0666\", GROUP=\"plugdev\"" >> /etc/udev/rules.d/77-spacemouse.rules
 ```
 
 Then we need to reload the defined udev rule to take effect. Reload can be done through:
@@ -63,6 +66,9 @@ $ python simTest.py
         - [x] reset
 - [ ] Data Collection Base class
 - [ ] Real world. (Real machine contral)
+    - [x] SpaceMouse
+    - [ ] RealSense Camera
+    - [ ] Data Collection
 
 NOT IMPORTANT:
 - [ ] Implement keyboard control.

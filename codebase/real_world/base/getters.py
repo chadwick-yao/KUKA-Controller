@@ -1,9 +1,9 @@
-from common.data_utils import String2Double
+from utils.data_utils import String2Double
 from socket import socket
 
 
 class Getters(object):
-    def __init__(self, sock: socket, iter) -> None:
+    def __init__(self, sock: socket, iter=5) -> None:
         self.sock = sock
         self.retry = iter
 

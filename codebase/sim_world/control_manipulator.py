@@ -16,7 +16,7 @@ from common.spacemouse import DeviceConfig
 from common.spacemouse import *
 from typing import Optional, Callable, List, Tuple, Union
 from codebase.sim_world.base.control_robot import BaseRobot
-from common.data_utils import *
+from utils.data_utils import *
 from collections import namedtuple
 
 import api.sim as sim
@@ -146,13 +146,13 @@ class ManipulatorRobot(BaseRobot):
 
                 # button function
                 if button_changed:
-                    if self.control_gripper[0] == 0:  # release left button
+                    if self.HIDevice.control_gripper[0] == 0:  # release left button
                         self.single_click_and_hold = False
-                    elif self.control_gripper[0] == 1:  # press left button
+                    elif self.HIDevice.control_gripper[0] == 1:  # press left button
                         if not self.single_click_and_hold:  # 0 -> 1
                             self.gripper_changing = True
                         self.single_click_and_hold = True
-                    if self.control_gripper[1] == 1:  # press right button
+                    if self.HIDevice.control_gripper[1] == 1:  # press right button
                         self._reset_state = 1
                         self._enable = False
 
@@ -243,8 +243,8 @@ class ManipulatorRobot(BaseRobot):
                 dict: a dictionary contraining dpos, nor, unmodified orn, grasp, and reset
         """
 
-        dpos = self.control_pose[:3] * 0.01 * self.pos_sensitivity
-        roll, pitch, yaw = self.control_pose[3:] * 0.05 * self.rot_sensitivity
+        dpos = self.HIDevice.control_pose[:3] * 0.01 * self.pos_sensitivity
+        roll, pitch, yaw = self.HIDevice.control_pose[3:] * 0.05 * self.rot_sensitivity
 
         # convert RPY to an absolute orientation
         drot1 = rotation_matrix(angle=-pitch, direction=[1.0, 0, 0], point=None)[:3, :3]
@@ -257,28 +257,9 @@ class ManipulatorRobot(BaseRobot):
             dpos=dpos,
             rotation=self.rotation,
             raw_drotation=np.array([roll, pitch, yaw]),
-            grasp=self.control_gripper,
+            grasp=self.HIDevice.control_gripper,
             reset=self._reset_state,
         )
-
-    @property
-    def control_pose(self):
-        """return current pose of SpaceMouse"""
-        return np.array(
-            [
-                getattr(self.HIDevice.tuple_state, k)
-                for k in ["x", "y", "z", "roll", "pitch", "yaw"]
-            ]
-        )
-
-    @property
-    def control_gripper(self):
-        """
-        return current gripper commonds
-            1st button to control gripper
-            2nd button to control whether restart
-        """
-        return np.array(getattr(self.HIDevice.tuple_state, "buttons"))
 
 
 if __name__ == "__main__":
