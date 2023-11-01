@@ -11,46 +11,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def test_getters(client: iiwaPy3):
-    try:
-        print(f"End effector position and orientation is: {client.getEEFPos()}")
-        time.sleep(0.1)
-
-        print(f"Forces acting at end effector are: {client.getEEF_Force()}")
-        time.sleep(0.1)
-
-        print(
-            f"Cartezian position (X,Y,Z) of end effector: {client.getEEFCartizianPosition()}"
-        )
-        time.sleep(0.1)
-
-        print(f"Moment at end effector: {client.getEEF_Moment()}")
-        time.sleep(0.1)
-
-        print(f"Joints positions: {client.getJointsPos()}")
-        time.sleep(0.1)
-
-        print(f"External torques at the joitns: {client.getJointsExternalTorques()}")
-        time.sleep(0.1)
-
-        print(f"Measured torques at the joints: {client.getJointsMeasuredTorques()}")
-        time.sleep(0.1)
-
-        print(f"Measured torque at joint 5: {client.getMeasuredTorqueAtJoint(5)}")
-        time.sleep(0.1)
-        print(
-            f"Rotation of EEF, fixed rotation angles (X,Y,Z): {client.getEEFCartizianOrientation()}"
-        )
-        time.sleep(0.1)
-
-        print(
-            f"Joints positions has been streamed external torques are: {client.getEEFCartizianOrientation()}"
-        )
-        time.sleep(0.1)
-    except:
-        raise RuntimeError
-
-
 from datetime import datetime
 
 start_time = datetime.now()
@@ -77,8 +37,6 @@ if __name__ == "__main__":
         port=30001,
         trans=(0, 0, 0, 0, 0, 0),
     )
-
-    # test_getters(REMOTER)
 
     REMOTER.reset_initial_state()
     logger.info(f"Have reset initial state successfully!")
