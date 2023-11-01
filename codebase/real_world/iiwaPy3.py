@@ -1,14 +1,12 @@
-from codebase.real_world.base.base_client import BaseClient
+import numpy as np
+from typing import Tuple, Union
+
+from codebase.real_world.base.PTP import PTP
 from codebase.real_world.base.getters import Getters
 from codebase.real_world.base.senders import Senders
 from codebase.real_world.base.setters import Setters
 from codebase.real_world.base.RealTime import RealTime
-from codebase.real_world.base.PTP import PTP
-from typing import Tuple, Union
-import common.spacemouse as pyspacemouse
-from common.spacemouse import DeviceConfig, DeviceSpec
-import threading
-import numpy as np
+from codebase.real_world.base.base_client import BaseClient
 
 
 class iiwaPy3(BaseClient):

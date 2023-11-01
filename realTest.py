@@ -3,23 +3,12 @@ import copy
 import math
 import numpy as np
 from codebase.real_world.iiwaPy3 import iiwaPy3
-from codebase.real_world.spacemouse import SpaceMouse
+from common.spacemouseX import SpaceMouse
 from codebase.real_world.interpolators.linear_interpolator import LinearInterpolator
 import utils.transform_utils as T
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-from datetime import datetime
-
-start_time = datetime.now()
-
-
-def getSecs():
-    dt = datetime.now() - start_time
-    secs = (dt.days * 24 * 60 * 60 + dt.seconds) + dt.microseconds / 1000000.0
-    return secs
 
 
 if __name__ == "__main__":
@@ -31,6 +20,7 @@ if __name__ == "__main__":
     )
     ori_interpolator = copy.deepcopy(interpolator)
     ori_interpolator.set_states(ori="euler")
+    use_interpolator = True
 
     REMOTER = iiwaPy3(
         host="172.31.1.147",
@@ -60,16 +50,14 @@ if __name__ == "__main__":
                 next_eef_pos[3:] = current_eef_pos[3:] + action[3:] * rot_sensitivity
 
                 # ! TODO: here got a problem
-                ori_interpolator, interpolator = None, None
-                if interpolator is not None and ori_interpolator is not None:
+                use_interpolator = False
+                if use_interpolator:
                     interpolator.set_start(current_eef_pos[:3])
                     ori_interpolator.set_start(current_eef_pos[3:])
 
                     interpolator.set_goal(next_eef_pos[:3])
                     ori_interpolator.set_start(next_eef_pos[3:])
 
-                    print(f"Current: {current_eef_pos}")
-                    print(f"Next: {next_eef_pos}")
                     while interpolator.step < interpolator.total_steps:
                         jointPositions = REMOTER.sendEEfPositionGetActualJpos(
                             np.concatenate(
@@ -99,6 +87,8 @@ if __name__ == "__main__":
         REMOTER.reset_initial_state()
         logger.info(f"Reset back to initial state!")
         REMOTER.close()
+
+        raise RuntimeError
 
     REMOTER.realTime_stopDirectServoCartesian()
     logger.info(f"Stoped Servo Cartesian mode successfully!")
