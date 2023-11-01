@@ -29,8 +29,8 @@ class iiwaPy3(BaseClient):
         self.TCPtrans = trans
 
     def reset_initial_state(self):
-        init_jpos = [0, 0, 0, -np.pi / 2, 0, np.pi / 2, 0]
-        init_vel = [0.1]
+        init_jpos = [0, np.pi * 20 / 180, 0, -np.pi * 80 / 180, 0, np.pi * 80 / 180, 0]
+        init_vel = [0.05]
 
         self.movePTPJointSpace(jpos=init_jpos, relVel=init_vel)
 
@@ -104,9 +104,6 @@ class iiwaPy3(BaseClient):
         )
 
     # Joint space servo command
-    def sendEEfPosition(self, x):
-        self.sender.sendEEfPosition(x)
-
     def sendJointsPositionsGetMTorque(self, x):
         return self.sender.sendJointsPositionsGetMTorque(x)
 

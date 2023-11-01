@@ -22,7 +22,7 @@ class Senders(object):
             for i, value in enumerate(data)
         ]
 
-        buff = cmd + "_".join(formatted_data)
+        buff = cmd + "_".join(formatted_data) + "\n"
 
         result = self.send(buff)
         if ret:
@@ -61,7 +61,7 @@ class Senders(object):
         num = 10000
         formatted_data = [str(math.ceil(value * num) / num) for value in data]
 
-        buff = cmd + "_".join(formatted_data)
+        buff = cmd + "_".join(formatted_data) + "\n"
         result = self.send(buff)
 
         if ret:
@@ -96,7 +96,7 @@ class Senders(object):
         cmd = "cArtixanPositionCirc1_"
         formatted_data = [str(math.ceil(value * num) / num) for value in fpos]
 
-        buff = cmd + "_".join(formatted_data)
+        buff = cmd + "_".join(formatted_data) + "\n"
         self.send(buff)
 
     def sendCirc2FramePos(self, fpos):
@@ -107,5 +107,5 @@ class Senders(object):
         cmd = "cArtixanPositionCirc2_"
         formatted_data = [str(math.ceil(value * num) / num) for value in fpos]
 
-        buff = cmd + "_".join(formatted_data)
+        buff = cmd + "_".join(formatted_data) + "\n"
         self.send(buff)

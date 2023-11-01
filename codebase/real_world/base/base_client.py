@@ -4,6 +4,11 @@ import logging
 import socket
 import time
 
+FORMAT = "[%(asctime)s][%(levelname)s]: %(message)s"
+logging.basicConfig(
+    level=logging.INFO, format=FORMAT, handlers=[logging.StreamHandler()]
+)
+
 logger = logging.getLogger(__name__)
 
 

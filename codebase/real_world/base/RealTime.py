@@ -22,12 +22,12 @@ class RealTime:
         time.sleep(0.3)
 
     def realTime_startDirectServoCartesian(self):
-        theCommand = "startDirectServoCartesian"
+        theCommand = "stDcEEf_"
         self.send(theCommand)
         time.sleep(0.3)
 
     def realTime_stopDirectServoCartesian(self):
-        theCommand = "stopDirectServoCartesian"
+        theCommand = "stopDirectServoJoints"
         self.send(theCommand)
         time.sleep(0.3)
 
