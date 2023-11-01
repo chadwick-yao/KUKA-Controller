@@ -247,6 +247,14 @@ class Robotiq85(object):
 # test
 if __name__ == "__main__":
     gripper = Robotiq85()
-    # gripper.reset
     gripper.activate()
-    gripper.open()
+    time.sleep(3)
+    gripper.reset()
+
+    for _ in range(4):
+        time.sleep(3)
+
+        if gripper.is_closed():
+            gripper.open()
+        elif gripper.is_opened():
+            gripper.close()

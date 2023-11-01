@@ -68,7 +68,9 @@ $ python simTest.py
 - [ ] Real world. (Real machine contral)
     - [x] SpaceMouse
     - [ ] RealSense Camera
+    - [ ] Gripper
     - [ ] Data Collection
 
 NOT IMPORTANT:
 - [ ] Implement keyboard control.
+- [ ] Robot, Gripper, data collector, every of these parts need to hybrid from threding.

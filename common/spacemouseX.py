@@ -82,9 +82,23 @@ class SpaceMouse(Thread):
 
 
 if __name__ == "__main__":
+    low2high = [False, False]
+    last_button = [False, False]
+
     with SpaceMouse(max_value=300) as sm:
-        for i in range(2000):
-            print(sm.get_motion_state())
-            print(sm.get_motion_state_transformed())
-            print(sm.is_button_pressed(0), sm.is_button_pressed(1))
+        for i in range(1000):
+            current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
+
+            if current_button[0] == True and last_button[0] == False:
+                low2high[0] = True
+            if current_button[1] == True and last_button[1] == False:
+                low2high[1] = True
+
+            if low2high[0]:
+                print("Button 1 has been pressed.")
+                low2high[0] = False
+            if low2high[1]:
+                print("Button 2 has been pressed.")
+                low2high[1] = False
+            last_button = current_button
             time.sleep(1 / 100)
