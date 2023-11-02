@@ -1,34 +1,38 @@
 import time
 from socket import socket
+from typing import Tuple
+from codebase.real_world.base.base_client import BaseClient
 
 
-class RealTime:
-    def __init__(self, sock: socket):
-        self.sock = sock
+class RealTime(BaseClient):
+    def __init__(self, host: str, port: int, trans: Tuple, sock: socket) -> None:
+        super().__init__(host, port, trans)
 
-    def send(self, data: str):
+        self.set_socket(sock)
+
+    def _send(self, data: str):
         data = data + "\n"
-        self.sock.send(data.encode("utf-8"))
-        self.sock.recv(1024).decode("utf-8")
+        self.send(data)
+        self.receive()
 
     def realTime_startDirectServoJoints(self):
         theCommand = "startDirectServoJoints"
-        self.send(theCommand)
+        self._send(theCommand)
         time.sleep(0.3)
 
     def realTime_stopDirectServoJoints(self):
         theCommand = "stopDirectServoJoints"
-        self.send(theCommand)
+        self._send(theCommand)
         time.sleep(0.3)
 
     def realTime_startDirectServoCartesian(self):
         theCommand = "stDcEEf_"
-        self.send(theCommand)
+        self._send(theCommand)
         time.sleep(0.3)
 
     def realTime_stopDirectServoCartesian(self):
         theCommand = "stopDirectServoJoints"
-        self.send(theCommand)
+        self._send(theCommand)
         time.sleep(0.3)
 
     def realTime_startImpedanceJoints(
@@ -42,10 +46,10 @@ class RealTime:
         theCommand = theCommand + "_" + str(cStiffness)
         theCommand = theCommand + "_" + str(rStiffness)
         theCommand = theCommand + "_" + str(nStiffness) + "_"
-        self.send(theCommand)
+        self._send(theCommand)
         time.sleep(0.3)
 
     def realTime_stopImpedanceJoints(self):
         theCommand = "stopImpedanceJoints"
-        self.send(theCommand)
+        self._send(theCommand)
         time.sleep(0.3)

@@ -1,21 +1,29 @@
 import math
 import sys
 import time
+from typing import Tuple
 from codebase.real_world.base.getters import Getters
 from codebase.real_world.base.senders import Senders
 from socket import socket
+from codebase.real_world.base.base_client import BaseClient
 
 
-class PTP(object):
-    def __init__(self, sock: socket):
-        self.sock = sock
-        self.sender = Senders(sock)
-        self.getter = Getters(sock)
+class PTP(BaseClient):
+    # def __init__(self, sock: socket):
+    #     self.sock = sock
+    #     self.sender = Senders(sock)
+    #     self.getter = Getters(sock)
+    def __init__(self, host: str, port: int, trans: Tuple, sock: socket) -> None:
+        super().__init__(host, port, trans)
 
-    def send(self, data: str):
+        self.set_socket(sock)
+        self.sender = Senders(host, port, trans, sock)
+        self.getter = Getters(host, port, trans, sock)
+
+    def _send(self, data: str):
         data = data + "\n"
-        self.sock.send(data.encode("utf-8"))
-        message = self.sock.recv(1024).decode("utf-8")
+        self.send(data)
+        message = self.receive()
         # print(message)
         # sys.stdout.flush()
         time.sleep(0.05)
@@ -156,11 +164,11 @@ class PTP(object):
         buff = "jRelVel_"
         buff = buff + str(relVel[0])
         buff = buff + "_"
-        self.send(buff)
+        self._send(buff)
         self.sender.sendCirc1FramePos(f1)
         self.sender.sendCirc2FramePos(f2)
         theCommand = "doPTPinCSCircle1_"
-        self.send(theCommand)
+        self._send(theCommand)
         self.awaitConfirmation()  # bug fixed on 1st October 2019, awaiting end of blocking motion
 
     def movePTPLineEEF(self, pos, vel):
@@ -173,10 +181,10 @@ class PTP(object):
 
         buff = "jRelVel_" + str(vel[0]) + "_"
         command = buff
-        self.send(command)
+        self._send(command)
         self.sender.sendEEfPositions(pos)
         theCommand = "doPTPinCS"
-        self.send(theCommand)
+        self._send(theCommand)
         self.awaitConfirmation()  # bug fixed on 1st October 2019, awaiting end of blocking motion
 
     def movePTPLineEefRelEef(self, pos, vel):
@@ -189,7 +197,7 @@ class PTP(object):
 
         buff = "jRelVel_" + str(vel[0]) + "_"
         command = buff
-        self.send(command)
+        self._send(command)
 
         newPos = [0, 0, 0, 0, 0, 0]
         newPos[0] = pos[0]
@@ -199,7 +207,7 @@ class PTP(object):
         self.sender.sendEEfPositions(newPos)
 
         theCommand = "doPTPinCSRelEEF"
-        self.send(theCommand)
+        self._send(theCommand)
         self.awaitConfirmation()  # bug fixed on 1st October 2019, awaiting end of blocking motion
 
     def movePTPLineEefRelBase(self, pos, vel):
@@ -208,7 +216,7 @@ class PTP(object):
 
         buff = "jRelVel_" + str(vel[0]) + "_"
         command = buff
-        self.send(command)
+        self._send(command)
 
         newPos = [0, 0, 0, 0, 0, 0]
         newPos[0] = pos[0]
@@ -218,7 +226,7 @@ class PTP(object):
         self.sender.sendEEfPositions(newPos)
 
         theCommand = "doPTPinCSRelBase"
-        self.send(theCommand)
+        self._send(theCommand)
         self.awaitConfirmation()  # bug fixed on 1st October 2019, awaiting end of blocking motion
 
     # joint space
@@ -232,10 +240,10 @@ class PTP(object):
 
         buff = "jRelVel_" + str(relVel[0]) + "_"
         command = buff
-        self.send(command)
+        self._send(command)
         self.sender.sendJointsPositions(jpos)
         theCommand = "doPTPinJS"
-        self.send(theCommand)
+        self._send(theCommand)
         self.awaitConfirmation()
 
     def movePTPHomeJointSpace(self, relVel):
@@ -245,11 +253,11 @@ class PTP(object):
 
         buff = "jRelVel_" + str(relVel[0]) + "_"
         command = buff
-        self.send(command)
+        self._send(command)
         jpos = [0, 0, 0, 0, 0, 0, 0]
         self.sender.sendJointsPositions(jpos)
         theCommand = "doPTPinJS"
-        self.send(theCommand)
+        self._send(theCommand)
         self.awaitConfirmation()
 
     def movePTPTransportPositionJointSpace(self, relVel):

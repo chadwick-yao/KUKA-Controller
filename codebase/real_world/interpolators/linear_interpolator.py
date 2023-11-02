@@ -13,7 +13,6 @@ class LinearInterpolator(Interpolator):
         controller_freq: int,
         policy_freq: int,
         ramp_ratio: float = 0.2,
-        use_delta_goal: bool = False,
         ori_interpolate: str = None,
     ) -> None:
         super().__init__()

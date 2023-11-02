@@ -1,16 +1,22 @@
 import math
+from typing import Tuple
 from utils.data_utils import String2Double
 from socket import socket
+from codebase.real_world.base.base_client import BaseClient
 
 
-class Senders(object):
-    def __init__(self, sock: socket) -> None:
-        self.sock = sock
+class Senders(BaseClient):
+    # def __init__(self, sock: socket) -> None:
+    #     self.sock = sock
+    def __init__(self, host: str, port: int, trans: Tuple, sock: socket) -> None:
+        super().__init__(host, port, trans)
 
-    def send(self, data: str):
+        self.set_socket(sock)
+
+    def _send(self, data: str):
         data = data + "\n"
-        self.sock.send(data.encode("utf-8"))
-        return self.sock.recv(1024).decode("utf-8")
+        self.send(data)
+        return self.receive()
 
     # EEF commond
     def _send_EEF_info(self, data, cmd, ret=False):
@@ -24,7 +30,7 @@ class Senders(object):
 
         buff = cmd + "_".join(formatted_data) + "\n"
 
-        result = self.send(buff)
+        result = self._send(buff)
         if ret:
             return result
 
@@ -62,7 +68,7 @@ class Senders(object):
         formatted_data = [str(math.ceil(value * num) / num) for value in data]
 
         buff = cmd + "_".join(formatted_data) + "\n"
-        result = self.send(buff)
+        result = self._send(buff)
 
         if ret:
             return result
@@ -97,7 +103,7 @@ class Senders(object):
         formatted_data = [str(math.ceil(value * num) / num) for value in fpos]
 
         buff = cmd + "_".join(formatted_data) + "\n"
-        self.send(buff)
+        self._send(buff)
 
     def sendCirc2FramePos(self, fpos):
         assert len(fpos) == 6, "EEF position should be an array of 6 elements."
@@ -108,4 +114,4 @@ class Senders(object):
         formatted_data = [str(math.ceil(value * num) / num) for value in fpos]
 
         buff = cmd + "_".join(formatted_data) + "\n"
-        self.send(buff)
+        self._send(buff)

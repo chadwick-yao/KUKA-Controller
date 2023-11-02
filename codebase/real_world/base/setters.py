@@ -1,13 +1,17 @@
 import sys
 from socket import socket
 import logging
+from typing import Tuple
+from codebase.real_world.base.base_client import BaseClient
 
 logger = logging.getLogger(__name__)
 
 
-class Setters(object):
-    def __init__(self, sock: socket):
-        self.sock = sock
+class Setters(BaseClient):
+    def __init__(self, host: str, port: int, trans: Tuple, sock: socket) -> None:
+        super().__init__(host, port, trans)
+
+        self.set_socket(sock)
         self.cmd_list = [
             "blueOff",
             "blueOn",
@@ -26,8 +30,8 @@ class Setters(object):
 
         command = command + "\n"
 
-        self.sock.send(command.encode("utf-8"))
-        message = self.sock.recv(1024).decode("utf-8")
+        self.send(command)
+        message = self.receive()
 
         logger.info(f"Got message: {message}, after doing {command}")
         sys.stdout.flush()

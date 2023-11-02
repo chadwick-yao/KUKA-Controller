@@ -1,17 +1,22 @@
+from typing import Tuple
 from utils.data_utils import String2Double
 from socket import socket
+from codebase.real_world.base.base_client import BaseClient
 
 
-class Getters(object):
-    def __init__(self, sock: socket, iter=5) -> None:
-        self.sock = sock
+class Getters(BaseClient):
+    def __init__(
+        self, host: str, port: int, trans: Tuple, sock: socket, iter: int = 5
+    ) -> None:
+        super().__init__(host, port, trans)
+        self.set_socket(sock)
         self.retry = iter
 
     def _get_data(self, command: str, size):
         command = command + "\n"
         for _ in range(self.retry):
-            self.sock.send(command.encode("utf-8"))
-            message = self.sock.recv(1024).decode("utf-8")
+            self.send(command)
+            message = self.receive()
             data = String2Double(message=message, size=size)
             if data:
                 return data

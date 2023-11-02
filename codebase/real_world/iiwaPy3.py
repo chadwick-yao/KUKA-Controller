@@ -1,5 +1,15 @@
 import numpy as np
 from typing import Tuple, Union
+import logging
+import socket
+import time
+
+FORMAT = "[%(asctime)s][%(levelname)s]: %(message)s"
+logging.basicConfig(
+    level=logging.INFO, format=FORMAT, handlers=[logging.StreamHandler()]
+)
+
+logger = logging.getLogger(__name__)
 
 from codebase.real_world.base.PTP import PTP
 from codebase.real_world.base.getters import Getters
@@ -19,12 +29,51 @@ class iiwaPy3(BaseClient):
         super().__init__(host, port, trans)
 
         self.connect()
-        self.setter = Setters(self.sock)
+        self.setter = Setters(host, port, trans, self.sock)
         self.getter = Getters(self.sock)
         self.sender = Senders(self.sock)
         self.rtl = RealTime(self.sock)
         self.ptp = PTP(self.sock)
         self.TCPtrans = trans
+
+    def connect(self):
+        try:
+            self.set_socket(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+            self.sock.settimeout(15.0)
+            self.sock.connect((self.host, self.port))
+            logger.info(f"Connected to {self.host}:{self.port}")
+        except socket.error as e:
+            logger.error(f"Connection failed: {e}")
+
+        # Update the transform of the TCP if one is specified
+        if all(num == 0 for num in self.trans):
+            logger.info("No TCP transform in Flange Frame is defined.")
+            logger.info(
+                f"The following (default) TCP transform is utilized: {self.trans}"
+            )
+            return
+
+        logger.info("Trying to mount the following TCP transform:")
+        string_tuple = (
+            "x (mm)",
+            "y (mm)",
+            "z (mm)",
+            "alfa (rad)",
+            "beta (rad)",
+            "gamma (rad)",
+        )
+
+        for i in range(6):
+            print(string_tuple[i] + ": " + str(self.trans[i]))
+
+        da_message = "TFtrans_" + "_".join(map(str, self.trans)) + "\n"
+        self.send(da_message)
+        return_ack_nack = self.receive()
+
+        if "done" in return_ack_nack:
+            logger.info("Specified TCP transform mounted successfully")
+        else:
+            raise RuntimeError("Could not mount the specified TCP")
 
     def reset_initial_state(self):
         init_jpos = [0, np.pi * 20 / 180, 0, -np.pi * 80 / 180, 0, np.pi * 80 / 180, 0]

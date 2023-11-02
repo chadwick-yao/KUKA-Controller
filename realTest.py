@@ -110,16 +110,10 @@ if __name__ == "__main__":
                     last_button = current_button
                     current_eef_pos = copy.deepcopy(next_eef_pos)
     except:
+        raise RuntimeError
+    finally:
         REMOTER.realTime_stopDirectServoCartesian()
         logger.info(f"Stoped Servo Cartesian mode successfully!")
         REMOTER.reset_initial_state()
         logger.info(f"Reset back to initial state!")
         REMOTER.close()
-
-        raise RuntimeError
-
-    REMOTER.realTime_stopDirectServoCartesian()
-    logger.info(f"Stoped Servo Cartesian mode successfully!")
-    REMOTER.reset_initial_state()
-    logger.info(f"Reset back to initial state!")
-    REMOTER.close()
