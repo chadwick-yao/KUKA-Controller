@@ -9,10 +9,6 @@ from codebase.real_world.base.base_client import BaseClient
 
 
 class PTP(BaseClient):
-    # def __init__(self, sock: socket):
-    #     self.sock = sock
-    #     self.sender = Senders(sock)
-    #     self.getter = Getters(sock)
     def __init__(self, host: str, port: int, trans: Tuple, sock: socket) -> None:
         super().__init__(host, port, trans)
 

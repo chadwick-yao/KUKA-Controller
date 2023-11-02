@@ -30,10 +30,10 @@ class iiwaPy3(BaseClient):
 
         self.connect()
         self.setter = Setters(host, port, trans, self.sock)
-        self.getter = Getters(self.sock)
-        self.sender = Senders(self.sock)
-        self.rtl = RealTime(self.sock)
-        self.ptp = PTP(self.sock)
+        self.getter = Getters(host, port, trans, self.sock)
+        self.sender = Senders(host, port, trans, self.sock)
+        self.rtl = RealTime(host, port, trans, self.sock)
+        self.ptp = PTP(host, port, trans, self.sock)
         self.TCPtrans = trans
 
     def connect(self):

@@ -48,10 +48,11 @@ if __name__ == "__main__":
 
     init_eef_pos = REMOTER.getEEFPos()
     current_eef_pos = copy.deepcopy(init_eef_pos)
-    REMOTER.realTime_startDirectServoCartesian()
-    cprint("Start real time Servo Cartesian mode.", "magenta")
 
     try:
+        REMOTER.realTime_startDirectServoCartesian()
+        cprint("Start real time Servo Cartesian mode.", "magenta")
+
         with SpaceMouse(max_value=300) as sm:
             for _ in range(2000):
                 action = sm.get_motion_state_transformed()
@@ -98,11 +99,21 @@ if __name__ == "__main__":
                         if GRIPPER.is_closed():
                             GRIPPER.open()
                             logger.info("Button 1 has been pressed.\nGripper opened!")
-                        else:
+                        elif GRIPPER.is_opened():
                             GRIPPER.close()
                             logger.info("Button 1 has been pressed.\nGripper closed!")
+                    # ! TODO: fix reset problem
                     if current_button[1] and not last_button[1]:
-                        _ = REMOTER.sendEEfPositionGetActualJpos(init_eef_pos)
+                        # stop Servo Cartesian
+                        REMOTER.realTime_stopDirectServoCartesian()
+
+                        _ = REMOTER.reset_initial_state()
+
+                        time.sleep(5)
+                        # start Servo Cartesian again
+                        REMOTER.realTime_startDirectServoCartesian()
+
+                        time.sleep(5)
                         logger.info("Button 2 has been pressed.\nRobot env reset!")
 
                     time.sleep(1 / 100)

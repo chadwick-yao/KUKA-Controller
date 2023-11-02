@@ -34,7 +34,7 @@ class BaseClient(metaclass=ABCMeta):
     def close(self):
         assert self.sock, "No connection is detected."
 
-        self.send("end\n")
+        self.sock.send("end\n".encode("utf-8"))
         time.sleep(1)
         self.sock.close()
 
@@ -46,9 +46,8 @@ class BaseClient(metaclass=ABCMeta):
         try:
             self.sock.send(data.encode("utf-8"))
         except socket.error as e:
-            logger.error(f"Send error: {e}.")
-        finally:
             self.close()
+            logger.error(f"Send error: {e}.")
 
     def receive(self, buffer_size=1024):
         assert self.sock, "No connection is detected."
@@ -56,6 +55,5 @@ class BaseClient(metaclass=ABCMeta):
         try:
             return self.sock.recv(buffer_size).decode("utf-8")
         except socket.error as e:
-            logger.error(f"Recv error: {e}.")
-        finally:
             self.close()
+            logger.error(f"Recv error: {e}.")
