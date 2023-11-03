@@ -1,3 +1,9 @@
+import sys
+import pathlib
+
+ROOT_DIR = str(pathlib.Path(__file__).parent.parent)
+sys.path.append(ROOT_DIR)
+
 import time
 import copy
 import math
