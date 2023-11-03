@@ -6,8 +6,6 @@ from codebase.real_world.base.base_client import BaseClient
 
 
 class Senders(BaseClient):
-    # def __init__(self, sock: socket) -> None:
-    #     self.sock = sock
     def __init__(self, host: str, port: int, trans: Tuple, sock: socket) -> None:
         super().__init__(host, port, trans)
 
