@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import time
-from pymodbus.client.sync import ModbusSerialClient
 import numpy as np
 from math import ceil
+import multiprocessing as mp
+from pymodbus.client.sync import ModbusSerialClient
 
 
-class Robotiq85(object):
+
+class Robotiq85(mp.Process):
     def __init__(self):
         self.client = None
         for _ in range(20):

@@ -225,10 +225,101 @@ class RealEnv:
 
     # ========= async env API ===========
     def get_obs(self) -> Dict:
-        raise NotImplementedError
-    
-    def exec_actions(self):
-        raise NotImplementedError
+        assert self.is_ready
+
+        # get data
+        # 30 Hz, camera_receive_timestamp
+        k = math.ceil(self.n_obs_steps * (self.video_capture_fps / self.frequency))
+        self.last_realsense_data = self.realsense.get(k=k, out=self.last_realsense_data)
+
+        # 125 hz, robot_receive_timestamp
+        last_robot_data = self.robot.get_all_state()
+        # both have more than n_obs_steps data
+
+        # align camera obs timestamps
+        dt = 1 / self.frequency
+        last_timestamp = np.max(
+            [x["timestamp"][-1] for x in self.last_realsense_data.values()]
+        )
+        obs_align_timestamps = last_timestamp - (np.arange(self.n_obs_steps)[::-1] * dt)
+
+        camera_obs = dict()
+        for camera_idx, value in self.last_realsense_data.items():
+            this_timestamps = value["timestamp"]
+            this_idxs = list()
+            for t in obs_align_timestamps:
+                is_before_idxs = np.nonzero(this_timestamps < t)[0]
+                this_idx = 0
+                if len(is_before_idxs) > 0:
+                    this_idx = is_before_idxs[-1]
+                this_idxs.append(this_idx)
+            # remap key
+            camera_obs[f"camera_{camera_idx}"] = value["color"][this_idxs]
+
+        # align robot obs
+        robot_timestamps = last_robot_data["robot_receive_timestamp"]
+        this_timestamps = robot_timestamps
+        this_idxs = list()
+        for t in obs_align_timestamps:
+            is_before_idxs = np.nonzero(this_timestamps < t)[0]
+            this_idx = 0
+            if len(is_before_idxs) > 0:
+                this_idx = is_before_idxs[-1]
+            this_idxs.append(this_idx)
+
+        robot_obs_raw = dict()
+        for k, v in last_robot_data.items():
+            if k in self.obs_key_map:
+                robot_obs_raw[self.obs_key_map[k]] = v
+
+        robot_obs = dict()
+        for k, v in robot_obs_raw.items():
+            robot_obs[k] = v[this_idxs]
+
+        # accumulate obs
+        if self.obs_accumulator is not None:
+            self.obs_accumulator.put(robot_obs_raw, robot_timestamps)
+
+        # return obs
+        obs_data = dict(camera_obs)
+        obs_data.update(robot_obs)
+        obs_data["timestamp"] = obs_align_timestamps
+        return obs_data
+
+    def exec_actions(
+        self,
+        actions: np.ndarray,
+        timestamps: np.ndarray,
+        stages: Optional[np.ndarray] = None,
+    ):
+        assert self.is_ready
+        if not isinstance(actions, np.ndarray):
+            actions = np.array(actions)
+        if not isinstance(timestamps, np.ndarray):
+            timestamps = np.array(timestamps)
+        if stages is None:
+            stages = np.zeros_like(timestamps, dtype=np.int64)
+        elif not isinstance(stages, np.ndarray):
+            stages = np.array(stages, dtype=np.int64)
+
+        # convert action to pose
+        receive_time = time.time()
+        is_new = timestamps > receive_time
+        new_actions = actions[is_new]
+        new_timestamps = timestamps[is_new]
+        new_stages = stages[is_new]
+
+        # schedule waypoints
+        for i in range(len(new_actions)):
+            self.robot.schedule_waypoint(
+                pose=new_actions[i], target_time=new_timestamps[i]
+            )
+
+        # record actions
+        if self.action_accumulator is not None:
+            self.action_accumulator.put(new_actions, new_timestamps)
+        if self.stage_accumulator is not None:
+            self.stage_accumulator.put(new_stages, new_timestamps)
 
     def get_robot_state(self):
         return self.robot.get_state()

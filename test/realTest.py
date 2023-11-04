@@ -14,7 +14,7 @@ from termcolor import colored, cprint
 import utils.transform_utils as T
 
 from common.spacemouseX import SpaceMouse
-from common.robotiq85 import Robotiq85
+from codebase.real_world.robotiq85 import Robotiq85
 
 from codebase.real_world.iiwaPy3 import iiwaPy3
 from codebase.real_world.interpolators.linear_interpolator import LinearInterpolator

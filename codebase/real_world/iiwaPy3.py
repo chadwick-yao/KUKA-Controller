@@ -3,6 +3,7 @@ from typing import Tuple, Union
 import logging
 import socket
 import time
+import enum
 
 FORMAT = "[%(asctime)s][%(levelname)s]: %(message)s"
 logging.basicConfig(
@@ -18,15 +19,37 @@ from codebase.real_world.base.setters import Setters
 from codebase.real_world.base.RealTime import RealTime
 from codebase.real_world.base.base_client import BaseClient
 
+import multiprocessing as mp
+from typing import Optional, Tuple, List
+from multiprocessing.managers import SharedMemoryManager
+from codebase.shared_memory.shared_memory_queue import SharedMemoryQueue, Full, Empty
+from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
 
-class iiwaPy3(BaseClient):
+
+class Command(enum.Enum):
+    STOP = 0
+    SERVOL = 1
+
+
+class IIWAPositionalController(BaseClient, mp.Process):
     def __init__(
         self,
+        shm_manager: SharedMemoryManager,
+        receive_keys: Optional[List],
         host: str = "172.31.1.147",
         port: int = 30001,
         trans: Tuple = (0, 0, 0, 0, 0, 0),
+        frequency: int = 100,
+        gain: int = 300,
+        max_pos_speed: float = 0.25,
+        max_rot_speed: float = 0.16,
+        launch_timeout: int = 3,
+        soft_real_time: bool = False,
+        verbose: bool = False,
+        get_max_k: int = 128,
     ) -> None:
-        super().__init__(host, port, trans)
+        BaseClient.__init__(self, host, port, trans)
+        mp.Process.__init__(self, name="IIWAPositionalController")
 
         self.connect()
         self.setter = Setters(host, port, trans, self.sock)
@@ -35,6 +58,124 @@ class iiwaPy3(BaseClient):
         self.rtl = RealTime(host, port, trans, self.sock)
         self.ptp = PTP(host, port, trans, self.sock)
         self.TCPtrans = trans
+
+        self.frequency = frequency
+        self.gain = gain
+        self.max_pos_speed = max_pos_speed
+        self.max_rot_speed = max_rot_speed
+        self.launch_timeout = launch_timeout
+        self.soft_real_time = soft_real_time
+        self.verbose = verbose
+        self.get_max_k = get_max_k
+
+        # build input queue
+        example = {
+            "cmd": Command.SERVOL.value,
+            "target_pose": np.zeros((6,), dtype=np.float64),
+            "duration": 0.0,
+            "target_time": 0.0,
+        }
+
+        input_queue = SharedMemoryQueue.create_from_examples(
+            shm_manager=shm_manager,
+            examples=example,
+            buffer_size=256,
+        )
+
+        # build ring buffer
+        if receive_keys is None:
+            receive_keys = [
+                "ActualTCPPose",
+                "ActualTCPSpeed",
+                "ActualQ",
+                "ActualQd",
+                "TargetTCPPose",
+                "TargetTCPSpeed",
+                "TargetQ",
+                "TargetQd",
+            ]
+
+        example = dict()
+        # TODO: robot observation dict
+        ring_buffer = SharedMemoryRingBuffer.create_from_examples(
+            shm_manager=shm_manager,
+            examples=example,
+            get_max_k=get_max_k,
+            get_time_budget=0.2,
+            put_desired_frequency=frequency,
+        )
+
+        self.ready_event = mp.Event()
+        self.input_queue = input_queue
+        self.ring_buffer = ring_buffer
+        self.receive_keys = receive_keys
+
+    # ========= launch method ===========
+    def start(self, wait=True):
+        super().start()
+        if wait:
+            self.start_wait()
+        if self.verbose:
+            print(
+                f"[IIWAPositionalController] Controller process spawned at {self.pid}"
+            )
+
+    def stop(self, wait=True):
+        message = {
+            "cmd": Command.STOP.value,
+        }
+        self.input_queue.put(message)
+        if wait:
+            self.stop_wait()
+
+    def start_wait(self):
+        self.ready_event.wait(self.launch_timeout)
+        assert self.is_alive()
+
+    def stop_wait(self):
+        self.join()
+
+    @property
+    def is_ready(self):
+        return self.ready_event.is_set()
+
+    # ========= context manager ===========
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+    # ========= command methods ============
+    def servoL(self, pose, duration=0.1):
+        """
+        duration: desired time to reach pose
+        """
+        assert self.is_alive()
+        assert duration >= (1 / self.frequency)
+        pose = np.array(pose)
+        assert pose.shape == (6,)
+
+        message = {
+            "cmd": Command.SERVOL.value,
+            "target_pose": pose,
+            "duration": duration,
+        }
+        self.input_queue.put(message)
+
+    # ========= receive APIs =============
+    def get_state(self, k=None, out=None):
+        if k is None:
+            return self.ring_buffer.get(out=out)
+        else:
+            return self.ring_buffer.get_last_k(k=k, out=out)
+
+    def get_all_state(self):
+        return self.ring_buffer.get_all()
+
+    def run(self):
+        raise NotImplemented
 
     def connect(self):
         try:
