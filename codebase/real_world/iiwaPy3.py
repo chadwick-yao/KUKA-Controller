@@ -4,6 +4,7 @@ import logging
 import socket
 import time
 import enum
+import os
 
 FORMAT = "[%(asctime)s][%(levelname)s]: %(message)s"
 logging.basicConfig(
@@ -175,7 +176,77 @@ class IIWAPositionalController(BaseClient, mp.Process):
         return self.ring_buffer.get_all()
 
     def run(self):
-        raise NotImplemented
+        if self.soft_real_time:
+            os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(20))
+
+        try:
+            # init pose
+            self.reset_initial_state()
+
+            # main loop
+            dt = 1.0 / self.frequency
+            curr_pose = self.getEEFPos()
+            # use monotonic time to make sure the control loop never go backward
+            curr_t = time.monotonic()
+
+            iter_idx = 0
+            keep_running = True
+            while keep_running:
+                # start control iteration
+                t_now = time.monotonic()
+
+                # TODO: send command to robot
+
+                # update robot state
+                state = dict()
+                for key in self.receive_keys:
+                    state[key] = np.array(getattr(self, "get" + key))
+                state["robot_receive_timestamp"] = time.time()
+                self.ring_buffer.put(state)
+                
+                # fetch command from queue
+                try:
+                    commands = self.input_queue.get_all()
+                    n_cmd = len(commands['cmd'])
+                except Empty:
+                    n_cmd = 0
+
+                # execute commands
+                for i in range(n_cmd):
+                    command = dict()
+                    for key, value in commands.items():
+                        command[key] = value[i]
+                    cmd = command['cmd']
+
+                    if cmd == Command.STOP.value:
+                        keep_running = False
+                        # stop immediately, ignore later commands
+                        break
+                    elif cmd == Command.SERVOL.value:
+                        # since curr_pose always lag behind curr_target_pose
+                        # if we start the next interpolation with curr_pose
+                        # the command robot receive will have discontinouity 
+                        # and cause jittery robot behavior.
+                        target_pose = command['target_pose']
+                        duration = float(command['duration'])
+                        curr_time = t_now + dt
+                        t_insert = curr_time + duration
+                        
+                    else:
+                        keep_running = False
+                        break
+                # TODO: regulate frequency
+
+                # first loop successful, ready to receive command
+                if iter_idx == 0:
+                    self.ready_event.set()
+                iter_idx += 1
+
+        finally:
+            # terminate
+            self.reset_initial_state()
+            self.close()
+            self.ready_event.set()
 
     def connect(self):
         try:

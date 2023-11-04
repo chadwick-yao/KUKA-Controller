@@ -8,7 +8,7 @@ from typing import Dict, Optional, Union, List, Tuple
 
 from multiprocessing.managers import SharedMemoryManager
 from codebase.real_world.realsense.video_recoder import VideoRecorder
-
+from codebase.real_world.robotiq85 import Robotiq85
 from codebase.real_world.realsense.multi_realsense import (
     MultiRealsense,
     SingleRealsense,
@@ -153,7 +153,7 @@ class RealEnv:
                 realsense=realsense, row=row, col=col, rgb_to_bgr=False
             )
 
-        # TODO: Load remote Robot
+        # TODO: Load remote Robot and gripper
         robot = None
         gripper = None
 

@@ -1,15 +1,33 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+import os
 import time
+import enum
 import numpy as np
 from math import ceil
 import multiprocessing as mp
 from pymodbus.client.sync import ModbusSerialClient
 
+from multiprocessing.managers import SharedMemoryManager
+from codebase.shared_memory.shared_memory_queue import SharedMemoryQueue, Full, Empty
+from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
+
+
+class Command(enum.Enum):
+    STOP = 0
+    ACTIVATE = 1
 
 
 class Robotiq85(mp.Process):
-    def __init__(self):
+    def __init__(
+        self,
+        shm_manager: SharedMemoryManager,
+        frequency: int,
+        launch_timeout: int = 3,
+        soft_real_time: bool = False,
+    ):
+        super().__init__(name="ROBOTIQ85Controller")
+
         self.client = None
         for _ in range(20):
             if not self.connectToDevice("/dev/ttyUSB0"):
@@ -20,6 +38,137 @@ class Robotiq85(mp.Process):
         if self.is_reset():
             self.reset()
             self.activate(timeout=0.05)
+
+        # build input queue
+        example = {
+            "cmd": Command.ACTIVATE.value,
+            "target_pose": np.zeros((1,), dtype=np.float64),
+            "duration": 0.0,
+            "target_time": 0.0,
+        }
+
+        input_queue = SharedMemoryQueue.create_from_examples(
+            shm_manager=shm_manager,
+            examples=example,
+            buffer_size=256,
+        )
+
+        # TODO: build state dict
+
+        self.launch_timeout = launch_timeout
+        self.frequency = frequency
+        self.ready_event = mp.Event()
+        self.input_queue = input_queue
+
+    # ========= launch method ===========
+    def start(self, wait=True):
+        super().start()
+        if wait:
+            self.start_wait()
+
+    def stop(self, wait=True):
+        message = {
+            "cmd": Command.STOP.value,
+        }
+        self.input_queue.put(message)
+        if wait:
+            self.stop_wait()
+
+    def start_wait(self):
+        self.ready_event.wait(self.launch_timeout)
+        assert self.is_alive()
+
+    def stop_wait(self):
+        self.join()
+
+    @property
+    def is_ready(self):
+        return self.ready_event.is_set()
+
+    # ========= context manager ===========
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.stop()
+
+    def excecute(self, pose):
+        assert self.is_alive()
+        pose = np.array(pose)
+        assert pose.shape == (1,)
+
+        message = {
+            "cmd": Command.SERVOL.value,
+            "target_pose": pose,
+        }
+        self.input_queue.put(message)
+
+    def run(self):
+        if self.soft_real_time:
+            os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(20))
+
+        try:
+            # init pose
+            self.reset()
+            self.activate(timeout=0.05)
+
+            # main loop
+            dt = 1.0 / self.frequency
+            curr_pose = 1.0 if self.is_closed() else 0.0
+            # use monotonic time to make sure the control loop never go backward
+            curr_t = time.monotonic()
+
+            iter_idx = 0
+            keep_running = True
+
+            while keep_running:
+                # start control iteration
+                t_now = time.monotonic()
+
+                # TODO: send command to gripper
+
+                # TODO: update gripper state
+
+                # fetch command from queue
+                try:
+                    commands = self.input_queue.get_all()
+                    n_cmd = len(commands["cmd"])
+                except Empty:
+                    n_cmd = 0
+
+                # execute commands
+                for i in range(n_cmd):
+                    command = dict()
+                    for key, value in commands.items():
+                        command[key] = value[i]
+                    cmd = command["cmd"]
+                    if cmd == Command.STOP.value:
+                        keep_running = False
+                        # stop immediately, ignore later commands
+                        break
+                    elif cmd == Command.ACTIVATE.value:
+                        # since curr_pose always lag behind curr_target_pose
+                        # if we start the next interpolation with curr_pose
+                        # the command robot receive will have discontinouity
+                        # and cause jittery robot behavior.
+                        target_pose = command["target_pose"]
+                        duration = float(command["duration"])
+                        curr_time = t_now + dt
+                        t_insert = curr_time + duration
+
+                    else:
+                        keep_running = False
+                        break
+                # TODO: regulate frequency
+
+                # first loop successful, ready to receive command
+                if iter_idx == 0:
+                    self.ready_event.set()
+                iter_idx += 1
+
+        finally:
+            self.disconnectFromDevice()
 
     def connectToDevice(self, device):
         """Connection to the client"""
@@ -121,7 +270,7 @@ class Robotiq85(mp.Process):
             message.append(command[n])
         return self._send_command(message)
 
-    def is_ready(self, status=None):
+    def _is_ready(self, status=None):
         status = status or self.getStatus()
         return status["gSTA"] == 3 and status["gACT"] == 1
 
@@ -249,9 +398,9 @@ class Robotiq85(mp.Process):
 # test
 if __name__ == "__main__":
     gripper = Robotiq85()
-    gripper.activate()
-    time.sleep(3)
     gripper.reset()
+    time.sleep(3)
+    gripper.activate()
 
     for _ in range(4):
         time.sleep(3)
