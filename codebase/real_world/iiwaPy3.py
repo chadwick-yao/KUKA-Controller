@@ -30,6 +30,7 @@ from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuf
 class Command(enum.Enum):
     STOP = 0
     SERVOL = 1
+    PTP = 2
 
 
 class IIWAPositionalController(BaseClient, mp.Process):
@@ -41,7 +42,6 @@ class IIWAPositionalController(BaseClient, mp.Process):
         port: int = 30001,
         trans: Tuple = (0, 0, 0, 0, 0, 0),
         frequency: int = 100,
-        gain: int = 300,
         max_pos_speed: float = 0.25,
         max_rot_speed: float = 0.16,
         launch_timeout: int = 3,
@@ -49,9 +49,18 @@ class IIWAPositionalController(BaseClient, mp.Process):
         verbose: bool = False,
         get_max_k: int = 128,
     ) -> None:
+        """
+        frequency: socket connection frequency
+        receive_keys: data definition
+        max_pos_speed: m/s
+        max_rot_speed: rad/s
+        soft_real_time: enables round-robin scheduling and real-time priority reuqires running scripts before hand
+        """
+        # super init
         BaseClient.__init__(self, host, port, trans)
         mp.Process.__init__(self, name="IIWAPositionalController")
 
+        # robot connection
         self.connect()
         self.setter = Setters(host, port, trans, self.sock)
         self.getter = Getters(host, port, trans, self.sock)
@@ -61,7 +70,6 @@ class IIWAPositionalController(BaseClient, mp.Process):
         self.TCPtrans = trans
 
         self.frequency = frequency
-        self.gain = gain
         self.max_pos_speed = max_pos_speed
         self.max_rot_speed = max_rot_speed
         self.launch_timeout = launch_timeout
@@ -73,8 +81,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         example = {
             "cmd": Command.SERVOL.value,
             "target_pose": np.zeros((6,), dtype=np.float64),
-            "duration": 0.0,
-            "target_time": 0.0,
+            "duration": 0.0,  # desired time to reach pose
         }
 
         input_queue = SharedMemoryQueue.create_from_examples(
@@ -85,19 +92,12 @@ class IIWAPositionalController(BaseClient, mp.Process):
 
         # build ring buffer
         if receive_keys is None:
-            receive_keys = [
-                "ActualTCPPose",
-                "ActualTCPSpeed",
-                "ActualQ",
-                "ActualQd",
-                "TargetTCPPose",
-                "TargetTCPSpeed",
-                "TargetQ",
-                "TargetQd",
-            ]
+            receive_keys = ["EEFPos", "JointsPos"]
 
         example = dict()
-        # TODO: robot observation dict
+        for key in receive_keys:
+            example[key] = np.array(getattr(self, "get" + key)())
+        example["robot_receive_timestamp"] = time.time()
         ring_buffer = SharedMemoryRingBuffer.create_from_examples(
             shm_manager=shm_manager,
             examples=example,
@@ -180,7 +180,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
             os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(20))
 
         try:
-            # init pose
+            # init pose (PTP)
             self.reset_initial_state()
 
             # main loop
@@ -203,11 +203,11 @@ class IIWAPositionalController(BaseClient, mp.Process):
                     state[key] = np.array(getattr(self, "get" + key))
                 state["robot_receive_timestamp"] = time.time()
                 self.ring_buffer.put(state)
-                
+
                 # fetch command from queue
                 try:
                     commands = self.input_queue.get_all()
-                    n_cmd = len(commands['cmd'])
+                    n_cmd = len(commands["cmd"])
                 except Empty:
                     n_cmd = 0
 
@@ -216,7 +216,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
                     command = dict()
                     for key, value in commands.items():
                         command[key] = value[i]
-                    cmd = command['cmd']
+                    cmd = command["cmd"]
 
                     if cmd == Command.STOP.value:
                         keep_running = False
@@ -225,13 +225,13 @@ class IIWAPositionalController(BaseClient, mp.Process):
                     elif cmd == Command.SERVOL.value:
                         # since curr_pose always lag behind curr_target_pose
                         # if we start the next interpolation with curr_pose
-                        # the command robot receive will have discontinouity 
+                        # the command robot receive will have discontinouity
                         # and cause jittery robot behavior.
-                        target_pose = command['target_pose']
-                        duration = float(command['duration'])
+                        target_pose = command["target_pose"]
+                        duration = float(command["duration"])
                         curr_time = t_now + dt
                         t_insert = curr_time + duration
-                        
+
                     else:
                         keep_running = False
                         break
