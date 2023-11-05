@@ -5,6 +5,7 @@ import socket
 import time
 import enum
 import os
+from termcolor import colored, cprint
 
 FORMAT = "[%(asctime)s][%(levelname)s]: %(message)s"
 logging.basicConfig(
@@ -30,7 +31,6 @@ from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuf
 class Command(enum.Enum):
     STOP = 0
     SERVOL = 1
-    PTP = 2
 
 
 class IIWAPositionalController(BaseClient, mp.Process):
@@ -46,7 +46,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         max_rot_speed: float = 0.16,
         launch_timeout: int = 3,
         soft_real_time: bool = False,
-        verbose: bool = False,
+        verbose: bool = True,
         get_max_k: int = 128,
     ) -> None:
         """
@@ -117,8 +117,10 @@ class IIWAPositionalController(BaseClient, mp.Process):
         if wait:
             self.start_wait()
         if self.verbose:
-            print(
-                f"[IIWAPositionalController] Controller process spawned at {self.pid}"
+            cprint(
+                f"[IIWAPositionalController] Controller process spawned at {self.pid}",
+                "white",
+                "on_green",
             )
 
     def stop(self, wait=True):
@@ -176,32 +178,25 @@ class IIWAPositionalController(BaseClient, mp.Process):
         return self.ring_buffer.get_all()
 
     def run(self):
+        cprint("Now Robot threading is running!", "yellow")
         if self.soft_real_time:
             os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(20))
 
         try:
             # init pose (PTP)
             self.reset_initial_state()
-
             # main loop
-            dt = 1.0 / self.frequency
-            curr_pose = self.getEEFPos()
-            # use monotonic time to make sure the control loop never go backward
-            curr_t = time.monotonic()
-
             iter_idx = 0
             keep_running = True
+            self.realTime_startDirectServoCartesian()
+            cprint("Have started Servo", "red")
             while keep_running:
-                # start control iteration
-                t_now = time.monotonic()
-
-                # TODO: send command to robot
-
                 # update robot state
                 state = dict()
                 for key in self.receive_keys:
-                    state[key] = np.array(getattr(self, "get" + key))
+                    state[key] = np.array(getattr(self, "get" + key)())
                 state["robot_receive_timestamp"] = time.time()
+                cprint("Have obtained state", "red")
                 self.ring_buffer.put(state)
 
                 # fetch command from queue
@@ -223,27 +218,20 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         # stop immediately, ignore later commands
                         break
                     elif cmd == Command.SERVOL.value:
-                        # since curr_pose always lag behind curr_target_pose
-                        # if we start the next interpolation with curr_pose
-                        # the command robot receive will have discontinouity
-                        # and cause jittery robot behavior.
-                        target_pose = command["target_pose"]
-                        duration = float(command["duration"])
-                        curr_time = t_now + dt
-                        t_insert = curr_time + duration
-
+                        pass
                     else:
                         keep_running = False
                         break
-                # TODO: regulate frequency
 
                 # first loop successful, ready to receive command
                 if iter_idx == 0:
+                    print("IIWA ready event is set!!!")
                     self.ready_event.set()
                 iter_idx += 1
 
         finally:
             # terminate
+            self.realTime_stopDirectServoCartesian()
             self.reset_initial_state()
             self.close()
             self.ready_event.set()
@@ -306,6 +294,9 @@ class IIWAPositionalController(BaseClient, mp.Process):
 
     def movePTPTransportPositionJointSpace(self, relVel):
         self.ptp.movePTPTransportPositionJointSpace(relVel)
+        
+    def movePTPLineEEF(self, pos, vel):
+        self.ptp.movePTPLineEEF(pos, vel)
 
     """
     Cartesian linear  motion

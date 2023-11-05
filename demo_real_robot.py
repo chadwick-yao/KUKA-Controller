@@ -1,6 +1,7 @@
 """
 Usage:
-(robodiff)$ python demo_real_robot.py -o <demo_save_dir> --robot_ip <ip_of_ur5>
+(robodiff)$ python demo_real_robot.py -o <demo_save_dir> --robot_ip <ip> --robot_port <port>
+e.g python demo_real_robot.py -o "data/demo_data" --robot_ip "172.31.1.147" --robot_port 30001
 
 Robot movement:
 Move your SpaceMouse to move the robot EEF (locked in xy plane).
@@ -32,17 +33,13 @@ from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
     "--output", "-o", required=True, help="Directory to save demonstration dataset."
 )
 @click.option(
-    "--robot_ip", "-ri", required=True, help="UR5's IP address e.g. 192.168.0.204"
+    "--robot_ip", "-ri", required=True, help="IIWA's IP address e.g. 172.31.1.147"
+)
+@click.option(
+    "--robot_port", "-rp", required=True, type=int, help="IIWA's port e.g. 30001"
 )
 @click.option(
     "--vis_camera_idx", default=0, type=int, help="Which RealSense camera to visualize."
-)
-@click.option(
-    "--init_joints",
-    "-j",
-    is_flag=True,
-    default=False,
-    help="Whether to initialize robot joint configuration in the beginning.",
 )
 @click.option(
     "--frequency", "-f", default=10, type=float, help="Control frequency in Hz."
@@ -54,13 +51,29 @@ from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
     type=float,
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
-def main(output, robot_ip, vis_camera_idx, init_joints, frequency, command_latency):
+def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latency):
     dt = 1 / frequency
 
     with SharedMemoryManager() as shm_manager:
         with KeystrokeCounter() as key_counter, Spacemouse(
-            shm_manager=shm_manager
-        ) as sm, RealEnv() as env:
+            shm_manager=shm_manager,
+            get_max_k=30,
+            frequency=200,
+        ) as sm, RealEnv(
+            output_dir=output,
+            robot_ip=robot_ip,
+            robot_port=robot_port,
+            # recording resolution
+            obs_image_resolution=(1280, 720),
+            frequency=frequency,
+            enable_multi_cam_vis=True,
+            record_raw_video=True,
+            # number of threads per camera view for video recording (H.264)
+            thread_per_video=3,
+            # video recording quality, lower is better (but slower).
+            video_crf=21,
+            shm_manager=shm_manager,
+        ) as env:
             cv2.setNumThreads(1)
 
             # realsense exposure
@@ -71,7 +84,7 @@ def main(output, robot_ip, vis_camera_idx, init_joints, frequency, command_laten
             time.sleep(1.0)
             print("Ready!")
             state = env.get_robot_state()
-            target_pose = state["TargetTCPPose"]
+            target_pose = state["EEFPos"]
 
             t_start = time.monotonic()
             iter_idx = 0
@@ -151,7 +164,7 @@ def main(output, robot_ip, vis_camera_idx, init_joints, frequency, command_laten
                 else:
                     dpos[:] = 0
                 if not sm.is_button_pressed(1):
-                    # 2D translation mode
+                    # TODO: gripper control
                     dpos[2] = 0
 
                 drot = st.Rotation.from_euler("xyz", drot_xyz)

@@ -6,7 +6,16 @@ import enum
 import numpy as np
 from math import ceil
 import multiprocessing as mp
+from typing import Optional, List, Dict, Tuple, Union
 from pymodbus.client.sync import ModbusSerialClient
+
+import sys
+import os
+import pathlib
+from termcolor import colored, cprint
+
+ROOT_DIR = str(pathlib.Path(__file__).parent.parent.parent)
+sys.path.append(ROOT_DIR)
 
 from multiprocessing.managers import SharedMemoryManager
 from codebase.shared_memory.shared_memory_queue import SharedMemoryQueue, Full, Empty
@@ -23,8 +32,11 @@ class Robotiq85(mp.Process):
         self,
         shm_manager: SharedMemoryManager,
         frequency: int,
+        receive_keys: Optional[List],
         launch_timeout: int = 3,
         soft_real_time: bool = False,
+        get_max_k: int = 128,
+        verbose: bool = True,
     ):
         super().__init__(name="ROBOTIQ85Controller")
 
@@ -35,16 +47,21 @@ class Robotiq85(mp.Process):
                 time.sleep(0.2)
         if not self.client.connect():
             raise Exception("gripper connect error")
-        if self.is_reset():
-            self.reset()
-            self.activate(timeout=0.05)
+
+        self.reset()
+        self.activate(timeout=0.05)
+
+        self.launch_timeout = launch_timeout
+        self.frequency = frequency
+        self.get_max_k = get_max_k
+        self.soft_real_time = soft_real_time
+        self.verbose = verbose
 
         # build input queue
         example = {
             "cmd": Command.ACTIVATE.value,
-            "target_pose": np.zeros((1,), dtype=np.float64),
+            "target_pose": np.zeros((1,), dtype=np.int8),
             "duration": 0.0,
-            "target_time": 0.0,
         }
 
         input_queue = SharedMemoryQueue.create_from_examples(
@@ -53,18 +70,38 @@ class Robotiq85(mp.Process):
             buffer_size=256,
         )
 
-        # TODO: build state dict
+        # build ring buffer
+        if receive_keys is None:
+            receive_keys = ["is_opened", "is_closed"]
 
-        self.launch_timeout = launch_timeout
-        self.frequency = frequency
+        example = dict()
+        for key in receive_keys:
+            example[key] = np.array([1 if getattr(self, key)() else 0])
+        example["robot_receive_timestamp"] = time.time()
+        ring_buffer = SharedMemoryRingBuffer.create_from_examples(
+            shm_manager=shm_manager,
+            examples=example,
+            get_max_k=get_max_k,
+            get_time_budget=0.2,
+            put_desired_frequency=frequency,
+        )
+
         self.ready_event = mp.Event()
         self.input_queue = input_queue
+        self.ring_buffer = ring_buffer
+        self.receive_keys = receive_keys
 
     # ========= launch method ===========
     def start(self, wait=True):
         super().start()
         if wait:
             self.start_wait()
+        if self.verbose:
+            cprint(
+                f"[Robotiq85Controller] Controller process spawned at {self.pid}",
+                "white",
+                "on_green",
+            )
 
     def stop(self, wait=True):
         message = {
@@ -93,7 +130,7 @@ class Robotiq85(mp.Process):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
-    def excecute(self, pose):
+    def excecute(self, pose, duration=0.1):
         assert self.is_alive()
         pose = np.array(pose)
         assert pose.shape == (1,)
@@ -101,10 +138,21 @@ class Robotiq85(mp.Process):
         message = {
             "cmd": Command.SERVOL.value,
             "target_pose": pose,
+            "duration": duration,
         }
         self.input_queue.put(message)
 
+    def get_state(self, k=None, out=None):
+        if k is None:
+            return self.ring_buffer.get(out=out)
+        else:
+            return self.ring_buffer.get_last_k(k=k, out=out)
+
+    def get_all_state(self):
+        return self.ring_buffer.get_all()
+
     def run(self):
+        cprint("Now Gripper threading is running!", "yellow")
         if self.soft_real_time:
             os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(20))
 
@@ -114,21 +162,15 @@ class Robotiq85(mp.Process):
             self.activate(timeout=0.05)
 
             # main loop
-            dt = 1.0 / self.frequency
-            curr_pose = 1.0 if self.is_closed() else 0.0
-            # use monotonic time to make sure the control loop never go backward
-            curr_t = time.monotonic()
-
             iter_idx = 0
             keep_running = True
-
             while keep_running:
-                # start control iteration
-                t_now = time.monotonic()
-
-                # TODO: send command to gripper
-
-                # TODO: update gripper state
+                # update robot state
+                state = dict()
+                for key in self.receive_keys:
+                    state[key] = np.array([1 if getattr(self, key)() else 0])
+                state["robot_receive_timestamp"] = time.time()
+                self.ring_buffer.put(state)
 
                 # fetch command from queue
                 try:
@@ -148,22 +190,13 @@ class Robotiq85(mp.Process):
                         # stop immediately, ignore later commands
                         break
                     elif cmd == Command.ACTIVATE.value:
-                        # since curr_pose always lag behind curr_target_pose
-                        # if we start the next interpolation with curr_pose
-                        # the command robot receive will have discontinouity
-                        # and cause jittery robot behavior.
-                        target_pose = command["target_pose"]
-                        duration = float(command["duration"])
-                        curr_time = t_now + dt
-                        t_insert = curr_time + duration
-
+                        pass
                     else:
                         keep_running = False
                         break
-                # TODO: regulate frequency
-
                 # first loop successful, ready to receive command
                 if iter_idx == 0:
+                    print("Gripper ready event is set!!!")
                     self.ready_event.set()
                 iter_idx += 1
 
@@ -347,7 +380,7 @@ class Robotiq85(mp.Process):
         self.sendCommand(cmd)
         start_time = time.time()
         while not timeout or (time.time() - start_time) < timeout:
-            if self.is_ready():
+            if self._is_ready():
                 return True
             time.sleep(0.1)
         return False
@@ -397,13 +430,13 @@ class Robotiq85(mp.Process):
 
 # test
 if __name__ == "__main__":
-    gripper = Robotiq85()
-    gripper.reset()
-    time.sleep(3)
-    gripper.activate()
+    shm_manager = SharedMemoryManager()
+    shm_manager.start()
 
-    for _ in range(4):
-        time.sleep(3)
+    gripper = Robotiq85(shm_manager=shm_manager, frequency=100, receive_keys=None)
+
+    for _ in range(6):
+        time.sleep(2)
 
         if gripper.is_closed():
             gripper.open()

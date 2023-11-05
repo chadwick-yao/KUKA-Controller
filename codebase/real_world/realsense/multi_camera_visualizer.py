@@ -18,7 +18,7 @@ class MultiCameraVisualizer(mp.Process):
         fill_value=0,
         rgb_to_bgr=True,
     ):
-        super.__init__()
+        super().__init__()
         self.row, self.col = row, col
         self.window_name = window_name
         self.vis_fps = vis_fps
@@ -26,13 +26,13 @@ class MultiCameraVisualizer(mp.Process):
         self.rgb_to_bgr = rgb_to_bgr
         self.realsense = realsense
         # shared variables
-        self.stop_envent = mp.Event()
+        self.stop_event = mp.Event()
 
-    def start(self):
+    def start(self, wait=False):
         super().start()
 
     def stop(self, wait=False):
-        self.stop_envent.set()
+        self.stop_event.set()
         if wait:
             self.stop_wait()
 

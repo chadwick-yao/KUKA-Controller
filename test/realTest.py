@@ -12,11 +12,11 @@ import numpy as np
 from termcolor import colored, cprint
 
 import utils.transform_utils as T
+from multiprocessing.managers import SharedMemoryManager
 
 from common.spacemouseX import SpaceMouse
 from codebase.real_world.robotiq85 import Robotiq85
-
-from codebase.real_world.iiwaPy3 import iiwaPy3
+from codebase.real_world.iiwaPy3 import IIWAPositionalController
 from codebase.real_world.interpolators.linear_interpolator import LinearInterpolator
 
 logger = logging.getLogger(__name__)
@@ -38,16 +38,17 @@ if __name__ == "__main__":
 
     last_button = [False, False]
 
-    GRIPPER = Robotiq85()
+    shm_manager = SharedMemoryManager()
+    shm_manager.start()
+
+    GRIPPER = Robotiq85(shm_manager=shm_manager, frequency=100, receive_keys=None)
     GRIPPER.activate()
     time.sleep(3)
     GRIPPER.reset()
     logger.info(f"Gripper is prepared.")
 
-    REMOTER = iiwaPy3(
-        host="172.31.1.147",
-        port=30001,
-        trans=(0, 0, 0, 0, 0, 0),
+    REMOTER = IIWAPositionalController(
+        shm_manager=shm_manager, host="172.31.1.147", port=30001, receive_keys=None
     )
     REMOTER.reset_initial_state()
     logger.info(f"Have reset initial state successfully!")
@@ -100,7 +101,6 @@ if __name__ == "__main__":
                     # logger.info(
                     #     f"Successfully moved to {np.around(next_eef_pos, decimals=2)}"
                     # )
-
                     if current_button[0] and not last_button[0]:
                         if GRIPPER.is_closed():
                             GRIPPER.open()

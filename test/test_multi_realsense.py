@@ -32,7 +32,7 @@ def test():
     from utils.cv2_utils import get_image_transform
 
     color_transform = get_image_transform(
-        input_res=(1280, 720), output_res=(640, 480), bgr_to_rgb=False
+        input_res=(1280, 720), output_res=(640, 480), bgr_to_rgb=True
     )
 
     def transform(data):
@@ -51,15 +51,15 @@ def test():
         enable_color=True,
         # advanced_mode_config=config,
         transform=transform,
-        # recording_transform=transform,
-        # video_recorder=video_recorder,
+        recording_transform=transform,
+        video_recorder=video_recorder,
         verbose=True,
     ) as realsense:
         realsense.set_exposure(exposure=150, gain=5)
         intr = realsense.get_intrinsics()
         print(intr)
 
-        video_path = "data_local/test"
+        video_path = "data/test"
         rec_start_time = time.time() + 1
         realsense.start_recording(video_path, start_time=rec_start_time)
         realsense.restart_put(rec_start_time)
@@ -69,12 +69,12 @@ def test():
         while True:
             out = realsense.get(out=out)
 
-            # bgr = out['color']
+            # bgr = [item["color"] for item in out.values()]
             # print(bgr.shape)
             # vis_img = np.concatenate(list(bgr), axis=0, out=vis_img)
-            # cv2.imshow('default', vis_img)
+            # cv2.imshow("default", vis_img)
             # key = cv2.pollKey()
-            # if key == ord('q'):
+            # if key == ord("q"):
             #     break
 
             time.sleep(1 / 60)

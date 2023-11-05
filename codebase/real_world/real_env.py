@@ -9,6 +9,7 @@ from typing import Dict, Optional, Union, List, Tuple
 from multiprocessing.managers import SharedMemoryManager
 from codebase.real_world.realsense.video_recoder import VideoRecorder
 from codebase.real_world.robotiq85 import Robotiq85
+from codebase.real_world.iiwaPy3 import IIWAPositionalController
 from codebase.real_world.realsense.multi_realsense import (
     MultiRealsense,
     SingleRealsense,
@@ -24,10 +25,10 @@ from utils.cv2_utils import get_image_transform, optimal_row_cols
 
 DEFAULT_OBS_KEY_MAP = {
     # robot
-    "ActualTCPPose": "robot_eef_pose",
-    "ActualTCPSpeed": "robot_eef_pose_vel",
-    "ActualQ": "robot_joint",
-    "ActualQd": "robot_joint_vel",
+    "EEFPos": "robot_eef_pose",
+    "JointsPos": "robot_joint",
+    # gripper
+    "GripperPos": "gripper_pose",
     # timestamps
     "step_idx": "step_idx",
     "timestamps": "timestamps",
@@ -38,7 +39,8 @@ class RealEnv:
     def __init__(
         self,
         output_dir: str,
-        robot_ip: str,
+        robot_ip: str = "172.31.1.147",
+        robot_port: int = 30001,
         # env params
         frequency: int = 10,
         n_obs_steps: int = 2,
@@ -51,9 +53,6 @@ class RealEnv:
         # action
         max_pos_speed: float = 0.25,
         max_rot_speed: float = 0.6,
-        # robot
-        tcp_offset: float = 0.13,
-        init_joints: bool = False,
         # video capture params
         video_capture_fps: int = 30,
         video_capture_resolution: Tuple = (1280, 720),
@@ -153,9 +152,13 @@ class RealEnv:
                 realsense=realsense, row=row, col=col, rgb_to_bgr=False
             )
 
-        # TODO: Load remote Robot and gripper
-        robot = None
-        gripper = None
+        robot = IIWAPositionalController(
+            shm_manager=shm_manager,
+            host=robot_ip,
+            port=robot_port,
+            receive_keys=None,
+        )
+        gripper = Robotiq85(shm_manager=shm_manager, frequency=100, receive_keys=None)
 
         self.realsense = realsense
         self.robot = robot
@@ -189,6 +192,7 @@ class RealEnv:
     def start(self, wait=True):
         self.realsense.start(wait=False)
         self.robot.start(wait=False)
+        self.gripper.start(wait=False)
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.start(wait=False)
         if wait:
@@ -198,6 +202,7 @@ class RealEnv:
         self.end_episode()
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.stop(wait=False)
+        self.gripper.stop(wait=False)
         self.robot.stop(wait=False)
         self.realsense.stop(wait=False)
         if wait:
@@ -206,10 +211,12 @@ class RealEnv:
     def start_wait(self):
         self.realsense.start_wait()
         self.robot.start_wait()
+        self.gripper.start_wait()
         if self.multi_cam_vis is not None:
             self.multi_cam_vis.start_wait()
 
     def stop_wait(self):
+        self.gripper.stop_wait()
         self.robot.stop_wait()
         self.realsense.stop_wait()
         if self.multi_cam_vis is not None:
@@ -234,6 +241,7 @@ class RealEnv:
 
         # 125 hz, robot_receive_timestamp
         last_robot_data = self.robot.get_all_state()
+        last_gripper_data = self.gripper.get_all_state()
         # both have more than n_obs_steps data
 
         # align camera obs timestamps
@@ -269,6 +277,20 @@ class RealEnv:
 
         robot_obs_raw = dict()
         for k, v in last_robot_data.items():
+            if k in self.obs_key_map:
+                robot_obs_raw[self.obs_key_map[k]] = v
+
+        # align gripper obs
+        gripper_timestamps = last_gripper_data["robot_receive_timestamp"]
+        this_timestamps = gripper_timestamps
+        this_idxs = list()
+        for t in obs_align_timestamps:
+            is_before_idxs = np.nonzero(this_timestamps < t)[0]
+            this_idx = 0
+            if len(is_before_idxs) > 0:
+                this_idx = is_before_idxs[-1]
+            this_idxs.append(this_idx)
+        for k, v in last_gripper_data.items():
             if k in self.obs_key_map:
                 robot_obs_raw[self.obs_key_map[k]] = v
 
@@ -309,11 +331,9 @@ class RealEnv:
         new_timestamps = timestamps[is_new]
         new_stages = stages[is_new]
 
-        # schedule waypoints
+        # TODO: control gripper
         for i in range(len(new_actions)):
-            self.robot.schedule_waypoint(
-                pose=new_actions[i], target_time=new_timestamps[i]
-            )
+            self.robot.sendEEfPosition(new_actions[i])
 
         # record actions
         if self.action_accumulator is not None:
@@ -323,6 +343,9 @@ class RealEnv:
 
     def get_robot_state(self):
         return self.robot.get_state()
+
+    def get_gripper_state(self):
+        return self.gripper.get_state()
 
     # recording API
     def start_episode(self, start_time=None):
