@@ -26,11 +26,13 @@ from typing import Optional, Tuple, List
 from multiprocessing.managers import SharedMemoryManager
 from codebase.shared_memory.shared_memory_queue import SharedMemoryQueue, Full, Empty
 from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
+from common.pose_trajectory_interpolator import PoseTrajectoryInterpolator
 
 
 class Command(enum.Enum):
     STOP = 0
     SERVOL = 1
+    SCHEDULE_WAYPOINT = 2
 
 
 class IIWAPositionalController(BaseClient, mp.Process):
@@ -82,6 +84,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
             "cmd": Command.SERVOL.value,
             "target_pose": np.zeros((6,), dtype=np.float64),
             "duration": 0.0,  # desired time to reach pose
+            "target_time": 0.0,
         }
 
         input_queue = SharedMemoryQueue.create_from_examples(
@@ -92,11 +95,12 @@ class IIWAPositionalController(BaseClient, mp.Process):
 
         # build ring buffer
         if receive_keys is None:
-            receive_keys = ["EEFPos", "JointsPos"]
+            receive_keys = ["EEFpos", "Jpos"]
 
         example = dict()
-        for key in receive_keys:
-            example[key] = np.array(getattr(self, "get" + key)())
+        init_keys = ["EEFPos", "JointsPos"]
+        for idx, key in enumerate(init_keys):
+            example[receive_keys[idx]] = np.array(getattr(self, "get" + key)())
         example["robot_receive_timestamp"] = time.time()
         ring_buffer = SharedMemoryRingBuffer.create_from_examples(
             shm_manager=shm_manager,
@@ -107,6 +111,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         )
 
         self.ready_event = mp.Event()
+        self.ready_servo = mp.Event()
         self.input_queue = input_queue
         self.ring_buffer = ring_buffer
         self.receive_keys = receive_keys
@@ -167,6 +172,18 @@ class IIWAPositionalController(BaseClient, mp.Process):
         }
         self.input_queue.put(message)
 
+    def schedule_waypoint(self, pose, target_time):
+        assert target_time > time.time()
+        pose = np.array(pose)
+        assert pose.shape == (6,)
+
+        message = {
+            "cmd": Command.SCHEDULE_WAYPOINT.value,
+            "target_pose": pose,
+            "target_time": target_time,
+        }
+        self.input_queue.put(message)
+
     # ========= receive APIs =============
     def get_state(self, k=None, out=None):
         if k is None:
@@ -186,18 +203,37 @@ class IIWAPositionalController(BaseClient, mp.Process):
             # init pose (PTP)
             self.reset_initial_state()
             # main loop
+            dt = 1.0 / self.frequency
+            curr_pose = self.getEEFPos()
+            # use monotonic time to make sure the control loop never go backward
+            curr_t = time.monotonic()
+            last_waypoint_time = curr_t
+            pose_interp = PoseTrajectoryInterpolator(times=[curr_t], poses=[curr_pose])
+
             iter_idx = 0
             keep_running = True
+
             self.realTime_startDirectServoCartesian()
-            cprint("Have started Servo", "red")
+            self.ready_servo.set()
+
             while keep_running:
+                t_start = time.perf_counter()
+
+                t_now = time.monotonic()
+                # diff = t_now - pose_interp.times[-1]
+                # if diff > 0:
+                #     print('extrapolate', diff)
+                pose_command = pose_interp(t_now)
+
                 # update robot state
                 state = dict()
                 for key in self.receive_keys:
-                    state[key] = np.array(getattr(self, "get" + key)())
+                    state[key] = np.array(
+                        getattr(self, "sendEEfPositionGetActual" + key)(pose_command)
+                    )
                 state["robot_receive_timestamp"] = time.time()
-                cprint("Have obtained state", "red")
                 self.ring_buffer.put(state)
+                cprint(f"Moved to {pose_command}", "green")
 
                 # fetch command from queue
                 try:
@@ -218,16 +254,59 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         # stop immediately, ignore later commands
                         break
                     elif cmd == Command.SERVOL.value:
-                        pass
+                        # since curr_pose always lag behind curr_target_pose
+                        # if we start the next interpolation with curr_pose
+                        # the command robot receive will have discontinouity
+                        # and cause jittery robot behavior.
+                        target_pose = command["target_pose"]
+                        duration = float(command["duration"])
+                        curr_time = t_now + dt
+                        t_insert = curr_time + duration
+                        pose_interp = pose_interp.drive_to_waypoint(
+                            pose=target_pose,
+                            time=t_insert,
+                            curr_time=curr_time,
+                            max_pos_speed=self.max_pos_speed,
+                            max_rot_speed=self.max_rot_speed,
+                        )
+                        last_waypoint_time = t_insert
+                        if self.verbose:
+                            cprint(
+                                f"[IIWAPositionalController] New pose target:{target_pose} duration:{duration}s",
+                                "red",
+                            )
+                    elif cmd == Command.SCHEDULE_WAYPOINT.value:
+                        target_pose = command["target_pose"]
+                        target_time = float(command["target_time"])
+                        # translate global time to monotonic time
+                        target_time = time.monotonic() - time.time() + target_time
+                        curr_time = t_now + dt
+                        pose_interp = pose_interp.schedule_waypoint(
+                            pose=target_pose,
+                            time=target_time,
+                            max_pos_speed=self.max_pos_speed,
+                            max_rot_speed=self.max_rot_speed,
+                            curr_time=curr_time,
+                            last_waypoint_time=last_waypoint_time,
+                        )
+                        last_waypoint_time = target_time
                     else:
                         keep_running = False
                         break
+                t_end = time.perf_counter()
+                if t_end - t_start < dt:
+                    time.sleep(dt - t_end + t_start)
 
                 # first loop successful, ready to receive command
                 if iter_idx == 0:
                     print("IIWA ready event is set!!!")
                     self.ready_event.set()
                 iter_idx += 1
+
+                if self.verbose:
+                    print(
+                        f"[IIWAPositionalController] Actual frequency {1/(time.perf_counter() - t_start)}"
+                    )
 
         finally:
             # terminate
@@ -294,7 +373,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
 
     def movePTPTransportPositionJointSpace(self, relVel):
         self.ptp.movePTPTransportPositionJointSpace(relVel)
-        
+
     def movePTPLineEEF(self, pos, vel):
         self.ptp.movePTPLineEEF(pos, vel)
 

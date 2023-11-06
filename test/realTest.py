@@ -59,6 +59,7 @@ if __name__ == "__main__":
     try:
         REMOTER.realTime_startDirectServoCartesian()
         cprint("Start real time Servo Cartesian mode.", "magenta")
+        drot_or_not = 1
 
         with SpaceMouse(max_value=300) as sm:
             for _ in range(2000):
@@ -70,9 +71,11 @@ if __name__ == "__main__":
                 next_eef_pos = np.zeros_like(current_eef_pos)
 
                 next_eef_pos[:3] = current_eef_pos[:3] + action[:3] * pos_sensitivity
-                next_eef_pos[3:] = current_eef_pos[3:] + action[3:] * rot_sensitivity
+                next_eef_pos[3:] = (
+                    current_eef_pos[3:] + action[3:] * rot_sensitivity * drot_or_not
+                )
 
-                # ! TODO: here got a problem about INTERPOLATOR
+                # TODO: here got a problem about INTERPOLATOR
                 use_interpolator = False
                 if use_interpolator:
                     interpolator.set_start(current_eef_pos[:3])
@@ -97,7 +100,7 @@ if __name__ == "__main__":
 
                     current_eef_pos = copy.deepcopy(next_eef_pos)
                 else:
-                    _ = REMOTER.sendEEfPositionGetActualJpos(next_eef_pos)
+                    _ = REMOTER.sendEEfPositionGetActualEEFpos(next_eef_pos)
                     # logger.info(
                     #     f"Successfully moved to {np.around(next_eef_pos, decimals=2)}"
                     # )
@@ -108,19 +111,9 @@ if __name__ == "__main__":
                         elif GRIPPER.is_opened():
                             GRIPPER.close()
                             logger.info("Button 1 has been pressed.\nGripper closed!")
-                    # ! TODO: fix reset problem
                     if current_button[1] and not last_button[1]:
-                        # stop Servo Cartesian
-                        REMOTER.realTime_stopDirectServoCartesian()
-
-                        _ = REMOTER.reset_initial_state()
-
-                        time.sleep(5)
-                        # start Servo Cartesian again
-                        REMOTER.realTime_startDirectServoCartesian()
-
-                        time.sleep(5)
-                        logger.info("Button 2 has been pressed.\nRobot env reset!")
+                        drot_or_not = 1 ^ drot_or_not
+                        logger.info("Button 2 has been pressed.\nRot fixed/movable!")
 
                     time.sleep(1 / 100)
 

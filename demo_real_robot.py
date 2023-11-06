@@ -20,6 +20,7 @@ import time
 import click
 import cv2
 import numpy as np
+from termcolor import colored, cprint
 import scipy.spatial.transform as st
 from multiprocessing.managers import SharedMemoryManager
 from codebase.real_world.real_env import RealEnv
@@ -81,10 +82,10 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             # realsense white balance
             env.realsense.set_white_balance(white_balance=5900)
 
-            time.sleep(1.0)
-            print("Ready!")
+            time.sleep(10.0)
+            cprint("Ready!", on_color="on_red")
             state = env.get_robot_state()
-            target_pose = state["EEFPos"]
+            target_pose = state["EEFpos"]
 
             t_start = time.monotonic()
             iter_idx = 0
@@ -173,6 +174,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                     drot * st.Rotation.from_rotvec(target_pose[3:])
                 ).as_rotvec()
 
+                cprint(f"Target to {target_pose}", "yellow")
                 # execute teleop command
                 env.exec_actions(
                     actions=[target_pose],

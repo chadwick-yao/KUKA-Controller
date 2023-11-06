@@ -51,7 +51,7 @@ class RealEnv:
         obs_key_map: Dict = DEFAULT_OBS_KEY_MAP,
         obs_float32: bool = False,
         # action
-        max_pos_speed: float = 0.25,
+        max_pos_speed: float = 1,
         max_rot_speed: float = 0.6,
         # video capture params
         video_capture_fps: int = 30,
@@ -333,7 +333,7 @@ class RealEnv:
 
         # TODO: control gripper
         for i in range(len(new_actions)):
-            self.robot.sendEEfPosition(new_actions[i])
+            self.robot.servoL(pose=new_actions[i])
 
         # record actions
         if self.action_accumulator is not None:
