@@ -185,7 +185,7 @@ class SharedMemoryRingBuffer:
         return out
 
     def get_last_k(self, k: int, out=None) -> Dict[str, np.ndarray]:
-        assert k <= self.get_max_k
+        assert k <= self.get_max_k, f"your input k: {k} is larger than {self.get_max_k}"
         if out is None:
             out = self._allocate_empty(k)
         start_time = time.monotonic()

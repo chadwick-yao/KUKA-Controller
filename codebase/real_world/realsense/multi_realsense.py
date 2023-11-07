@@ -137,6 +137,12 @@ class MultiRealsense:
             this_out = camera.get(k=k, out=this_out)
             out[i] = this_out
         return out
+    
+    def get_all(self):
+        out = dict()
+        for i, camera in enumerate(self.cameras.values()):
+            out[i] = camera.get_all()
+        return out
 
     def get_vis(self, out=None):
         results = list()

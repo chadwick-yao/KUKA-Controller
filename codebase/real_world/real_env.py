@@ -25,10 +25,12 @@ from utils.cv2_utils import get_image_transform, optimal_row_cols
 
 DEFAULT_OBS_KEY_MAP = {
     # robot
-    "EEFPos": "robot_eef_pose",
-    "JointsPos": "robot_joint",
+    "EEFpos": "robot_eef_pose",
+    "Jpos": "robot_joint",
     # gripper
-    "GripperPos": "gripper_pose",
+    "OpenOrClose": "gripper_pose",
+    "camera_0": "agent_view",
+    "camera_1": "view_in_hand",
     # timestamps
     "step_idx": "step_idx",
     "timestamps": "timestamps",
@@ -157,8 +159,14 @@ class RealEnv:
             host=robot_ip,
             port=robot_port,
             receive_keys=None,
+            get_max_k=30,
         )
-        gripper = Robotiq85(shm_manager=shm_manager, frequency=100, receive_keys=None)
+        gripper = Robotiq85(
+            shm_manager=shm_manager,
+            frequency=100,
+            receive_keys=None,
+            get_max_k=30,
+        )
 
         self.realsense = realsense
         self.robot = robot
@@ -298,6 +306,14 @@ class RealEnv:
         for k, v in robot_obs_raw.items():
             robot_obs[k] = v[this_idxs]
 
+        # align img data
+        # for k, v in camera_obs.items():
+        #     if k in self.obs_key_map:
+        #         robot_obs_raw[self.obs_key_map[k]] = v
+
+        # for k, v in robot_obs_raw.items():
+        #     print(k, v.shape)
+
         # accumulate obs
         if self.obs_accumulator is not None:
             self.obs_accumulator.put(robot_obs_raw, robot_timestamps)
@@ -331,7 +347,6 @@ class RealEnv:
         new_timestamps = timestamps[is_new]
         new_stages = stages[is_new]
 
-        # TODO: control gripper
         for i in range(len(new_actions)):
             self.robot.servoL(pose=new_actions[i][:6])
             self.gripper.execute(pose=[new_actions[i][6]])

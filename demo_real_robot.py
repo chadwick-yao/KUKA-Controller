@@ -64,13 +64,14 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             output_dir=output,
             robot_ip=robot_ip,
             robot_port=robot_port,
+            n_obs_steps=2,
             # recording resolution
             obs_image_resolution=(1280, 720),
             frequency=frequency,
             enable_multi_cam_vis=True,
             record_raw_video=True,
             # number of threads per camera view for video recording (H.264)
-            thread_per_video=3,
+            thread_per_video=4,
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
@@ -120,13 +121,13 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                         )
                         key_counter.clear()
                         is_recording = True
-                        print("Recording!")
+                        cprint("Recording!", on_color="on_green")
                     elif key_stroke == KeyCode(char="s"):
                         # Stop recording
                         env.end_episode()
                         key_counter.clear()
                         is_recording = False
-                        print("Stopped.")
+                        cprint("Stopped.",  on_color="on_red")
                     elif key_stroke == Key.backspace:
                         # Delete the most recent recorded episode
                         if click.confirm("Are you sure to drop an episode?"):

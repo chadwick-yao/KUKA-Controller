@@ -202,6 +202,9 @@ class SingleRealsense(mp.Process):
         else:
             return self.ring_buffer.get_last_k(k, out=out)
 
+    def get_all(self):
+        return self.ring_buffer.get_all()
+
     def get_vis(self, out=None):
         return self.vis_ring_buffer.get(out=out)
 

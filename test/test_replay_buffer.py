@@ -31,7 +31,7 @@ def test():
 def test_real():
     dist_group = zarr.open(
         os.path.expanduser(
-            "/home/shawn/Documents/pyspacemouse-coppeliasim/data/pusht/pusht_cchi_v7_replay.zarr"
+            "/home/shawn/Documents/pyspacemouse-coppeliasim/data/demo_data/replay_buffer.zarr"
         ),
         "r",
     )
@@ -54,7 +54,7 @@ def test_real():
 
 def test_pop():
     buff = ReplayBuffer.create_from_path(
-        "/home/shawn/Documents/pyspacemouse-coppeliasim/data/pusht/pusht_cchi_v7_replay.zarr",
+        "/home/shawn/Documents/pyspacemouse-coppeliasim/data/demo_data/replay_buffer.zarr",
         mode="rw",
     )
 
@@ -67,4 +67,9 @@ def test_save():
 
 
 if __name__ == "__main__":
-    test_save()
+    # test_save()
+    buff = ReplayBuffer.create_from_path(
+        "/home/shawn/Documents/pyspacemouse-coppeliasim/data/demo_data/replay_buffer.zarr",
+        mode="rw",
+    )
+    print(buff.root.tree())
