@@ -48,7 +48,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         max_rot_speed: float = 0.16,
         launch_timeout: int = 3,
         soft_real_time: bool = False,
-        verbose: bool = True,
+        verbose: bool = False,
         get_max_k: int = 128,
     ) -> None:
         """
@@ -205,6 +205,8 @@ class IIWAPositionalController(BaseClient, mp.Process):
             # main loop
             dt = 1.0 / self.frequency
             curr_pose = self.getEEFPos()
+            import copy
+            target_pose = copy.deepcopy(curr_pose)
             # use monotonic time to make sure the control loop never go backward
             curr_t = time.monotonic()
             last_waypoint_time = curr_t
@@ -223,17 +225,17 @@ class IIWAPositionalController(BaseClient, mp.Process):
                 # diff = t_now - pose_interp.times[-1]
                 # if diff > 0:
                 #     print('extrapolate', diff)
-                pose_command = pose_interp(t_now)
+                # pose_command = pose_interp(t_now)
 
                 # update robot state
                 state = dict()
                 for key in self.receive_keys:
                     state[key] = np.array(
-                        getattr(self, "sendEEfPositionGetActual" + key)(pose_command)
+                        getattr(self, "sendEEfPositionGetActual" + key)(target_pose)
                     )
                 state["robot_receive_timestamp"] = time.time()
                 self.ring_buffer.put(state)
-                cprint(f"Moved to {pose_command}", "green")
+                # cprint(f"Moved to {pose_command}", "green")
 
                 # fetch command from queue
                 try:
@@ -262,13 +264,13 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         duration = float(command["duration"])
                         curr_time = t_now + dt
                         t_insert = curr_time + duration
-                        pose_interp = pose_interp.drive_to_waypoint(
-                            pose=target_pose,
-                            time=t_insert,
-                            curr_time=curr_time,
-                            max_pos_speed=self.max_pos_speed,
-                            max_rot_speed=self.max_rot_speed,
-                        )
+                        # pose_interp = pose_interp.drive_to_waypoint(
+                        #     pose=target_pose,
+                        #     time=t_insert,
+                        #     curr_time=curr_time,
+                        #     max_pos_speed=self.max_pos_speed,
+                        #     max_rot_speed=self.max_rot_speed,
+                        # )
                         last_waypoint_time = t_insert
                         if self.verbose:
                             cprint(

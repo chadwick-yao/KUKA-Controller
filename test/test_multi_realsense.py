@@ -47,7 +47,7 @@ def test():
     with MultiRealsense(
         resolution=(1280, 720),
         capture_fps=30,
-        record_fps=10,
+        record_fps=20,
         enable_color=True,
         # advanced_mode_config=config,
         transform=transform,

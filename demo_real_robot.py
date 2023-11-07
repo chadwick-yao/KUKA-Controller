@@ -1,7 +1,7 @@
 """
 Usage:
 (robodiff)$ python demo_real_robot.py -o <demo_save_dir> --robot_ip <ip> --robot_port <port>
-e.g python demo_real_robot.py -o "data/demo_data" --robot_ip "172.31.1.147" --robot_port 30001
+e.g python demo_real_robot.py -o "data/demo_data" --robot_ip "172.31.1.147" --robot_port 30001 --frequency 20
 
 Robot movement:
 Move your SpaceMouse to move the robot EEF (locked in xy plane).
@@ -74,6 +74,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
+            max_pos_speed=float(frequency)
         ) as env:
             cv2.setNumThreads(1)
 
@@ -82,7 +83,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             # realsense white balance
             env.realsense.set_white_balance(white_balance=5900)
 
-            time.sleep(10.0)
+            time.sleep(3.0)
             cprint("Ready!", on_color="on_red")
             state = env.get_robot_state()
             target_pose = state["EEFpos"]
@@ -92,7 +93,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             stop = False
             is_recording = False
 
-            while not stop:
+            while not stop and env.robot.ready_servo.is_set():
                 # calculate timing
                 t_cycle_end = t_start + (iter_idx + 1) * dt
                 t_sample = t_cycle_end - command_latency
@@ -159,22 +160,24 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                 dpos = sm_state[:3] * (env.max_pos_speed / frequency)
                 drot_xyz = sm_state[3:] * (env.max_rot_speed / frequency)
 
-                if not sm.is_button_pressed(0):
-                    # translation mode
-                    drot_xyz[:] = 0
-                else:
-                    dpos[:] = 0
-                if not sm.is_button_pressed(1):
-                    # TODO: gripper control
-                    dpos[2] = 0
+                # ------------- Button Features -------------
+                # if not sm.is_button_pressed(0):
+                #     # translation mode
+                #     drot_xyz[:] = 0
+                # else:
+                #     dpos[:] = 0
+                # if not sm.is_button_pressed(1):
+                #     # TODO: gripper control
+                #     dpos[2] = 0
 
+                # pose transformation
                 drot = st.Rotation.from_euler("xyz", drot_xyz)
                 target_pose[:3] += dpos
                 target_pose[3:] = (
-                    drot * st.Rotation.from_rotvec(target_pose[3:])
-                ).as_rotvec()
+                    drot * st.Rotation.from_euler("zyx", target_pose[3:])
+                ).as_euler("zyx")
 
-                cprint(f"Target to {target_pose}", "yellow")
+                # cprint(f"Target to {target_pose}", "yellow")
                 # execute teleop command
                 env.exec_actions(
                     actions=[target_pose],

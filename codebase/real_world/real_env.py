@@ -52,7 +52,7 @@ class RealEnv:
         obs_float32: bool = False,
         # action
         max_pos_speed: float = 1,
-        max_rot_speed: float = 0.6,
+        max_rot_speed: float = 0.2,
         # video capture params
         video_capture_fps: int = 30,
         video_capture_resolution: Tuple = (1280, 720),

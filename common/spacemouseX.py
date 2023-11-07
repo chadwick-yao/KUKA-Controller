@@ -88,7 +88,7 @@ if __name__ == "__main__":
     with SpaceMouse(max_value=300) as sm:
         for i in range(1000):
             current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
-
+            print(sm.get_motion_state_transformed()[:3])
             if current_button[0] == True and last_button[0] == False:
                 low2high[0] = True
             if current_button[1] == True and last_button[1] == False:
