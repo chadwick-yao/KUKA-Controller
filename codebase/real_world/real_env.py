@@ -3,6 +3,7 @@ import math
 import shutil
 import pathlib
 import numpy as np
+from termcolor import colored, cprint
 
 from typing import Dict, Optional, Union, List, Tuple
 
@@ -159,13 +160,11 @@ class RealEnv:
             host=robot_ip,
             port=robot_port,
             receive_keys=None,
-            get_max_k=30,
         )
         gripper = Robotiq85(
             shm_manager=shm_manager,
             frequency=100,
             receive_keys=None,
-            get_max_k=30,
         )
 
         self.realsense = realsense
@@ -272,7 +271,7 @@ class RealEnv:
             # remap key
             camera_obs[f"camera_{camera_idx}"] = value["color"][this_idxs]
 
-        # align robot obs
+        # robot obs
         robot_timestamps = last_robot_data["robot_receive_timestamp"]
         this_timestamps = robot_timestamps
         this_idxs = list()
@@ -288,7 +287,12 @@ class RealEnv:
             if k in self.obs_key_map:
                 robot_obs_raw[self.obs_key_map[k]] = v
 
-        # align gripper obs
+        # align robot obs
+        robot_obs = dict()
+        for k, v in robot_obs_raw.items():
+            robot_obs[k] = v[this_idxs]
+
+        # gripper obs
         gripper_timestamps = last_gripper_data["gripper_receive_timestamp"]
         this_timestamps = gripper_timestamps
         this_idxs = list()
@@ -298,22 +302,16 @@ class RealEnv:
             if len(is_before_idxs) > 0:
                 this_idx = is_before_idxs[-1]
             this_idxs.append(this_idx)
+        gripper_obs_raw = dict()
         for k, v in last_gripper_data.items():
             if k in self.obs_key_map:
-                robot_obs_raw[self.obs_key_map[k]] = v
+                gripper_obs_raw[self.obs_key_map[k]] = v
 
-        robot_obs = dict()
-        for k, v in robot_obs_raw.items():
+        # align gripper obs
+        for k, v in gripper_obs_raw.items():
             robot_obs[k] = v[this_idxs]
 
-        # align img data
-        # for k, v in camera_obs.items():
-        #     if k in self.obs_key_map:
-        #         robot_obs_raw[self.obs_key_map[k]] = v
-
-        # for k, v in robot_obs_raw.items():
-        #     print(k, v.shape)
-
+        robot_obs_raw.update(gripper_obs_raw)
         # accumulate obs
         if self.obs_accumulator is not None:
             self.obs_accumulator.put(robot_obs_raw, robot_timestamps)

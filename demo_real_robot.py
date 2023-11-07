@@ -75,7 +75,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
-            max_pos_speed=float(frequency)
+            max_pos_speed=float(frequency),
         ) as env:
             cv2.setNumThreads(1)
 
@@ -94,7 +94,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             stop = False
             is_recording = False
             last_button = [False, False]
-            G_target_pose = 0   # open
+            G_target_pose = 0  # open
 
             while not stop and env.robot.ready_servo.is_set():
                 # calculate timing
@@ -127,7 +127,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                         env.end_episode()
                         key_counter.clear()
                         is_recording = False
-                        cprint("Stopped.",  on_color="on_red")
+                        cprint("Stopped.", on_color="on_red")
                     elif key_stroke == Key.backspace:
                         # Delete the most recent recorded episode
                         if click.confirm("Are you sure to drop an episode?"):
@@ -173,7 +173,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                 if current_button[1] and not last_button[1]:
                     G_target_pose = 1 ^ G_target_pose
                 last_button = current_button
-                
+
                 # pose transformation
                 drot = st.Rotation.from_euler("xyz", drot_xyz)
                 target_pose[:3] += dpos
