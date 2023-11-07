@@ -92,6 +92,8 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             iter_idx = 0
             stop = False
             is_recording = False
+            last_button = [False, False]
+            G_target_pose = 0   # open
 
             while not stop and env.robot.ready_servo.is_set():
                 # calculate timing
@@ -161,15 +163,16 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                 drot_xyz = sm_state[3:] * (env.max_rot_speed / frequency)
 
                 # ------------- Button Features -------------
-                # if not sm.is_button_pressed(0):
-                #     # translation mode
-                #     drot_xyz[:] = 0
-                # else:
-                #     dpos[:] = 0
-                # if not sm.is_button_pressed(1):
-                #     # TODO: gripper control
-                #     dpos[2] = 0
-
+                current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
+                if not current_button[0]:
+                    # translation mode
+                    drot_xyz[:] = 0
+                else:
+                    dpos[:] = 0
+                if current_button[1] and not last_button[1]:
+                    G_target_pose = 1 ^ G_target_pose
+                last_button = current_button
+                
                 # pose transformation
                 drot = st.Rotation.from_euler("xyz", drot_xyz)
                 target_pose[:3] += dpos
@@ -180,7 +183,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                 # cprint(f"Target to {target_pose}", "yellow")
                 # execute teleop command
                 env.exec_actions(
-                    actions=[target_pose],
+                    actions=[np.append(target_pose, G_target_pose)],
                     timestamps=[t_command_target - time.monotonic() + time.time()],
                     stages=[stage],
                 )

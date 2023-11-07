@@ -3,6 +3,7 @@ from typing import Tuple, Union
 import logging
 import socket
 import time
+import copy
 import enum
 import os
 from termcolor import colored, cprint
@@ -205,7 +206,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
             # main loop
             dt = 1.0 / self.frequency
             curr_pose = self.getEEFPos()
-            import copy
+            
             target_pose = copy.deepcopy(curr_pose)
             # use monotonic time to make sure the control loop never go backward
             curr_t = time.monotonic()

@@ -281,7 +281,7 @@ class RealEnv:
                 robot_obs_raw[self.obs_key_map[k]] = v
 
         # align gripper obs
-        gripper_timestamps = last_gripper_data["robot_receive_timestamp"]
+        gripper_timestamps = last_gripper_data["gripper_receive_timestamp"]
         this_timestamps = gripper_timestamps
         this_idxs = list()
         for t in obs_align_timestamps:
@@ -333,7 +333,8 @@ class RealEnv:
 
         # TODO: control gripper
         for i in range(len(new_actions)):
-            self.robot.servoL(pose=new_actions[i])
+            self.robot.servoL(pose=new_actions[i][:6])
+            self.gripper.execute(pose=[new_actions[i][6]])
 
         # record actions
         if self.action_accumulator is not None:

@@ -36,7 +36,7 @@ class Robotiq85(mp.Process):
         launch_timeout: int = 3,
         soft_real_time: bool = False,
         get_max_k: int = 128,
-        verbose: bool = True,
+        verbose: bool = False,
     ):
         super().__init__(name="ROBOTIQ85Controller")
 
@@ -60,7 +60,7 @@ class Robotiq85(mp.Process):
         # build input queue
         example = {
             "cmd": Command.ACTIVATE.value,
-            "target_pose": np.zeros((1,), dtype=np.int8),
+            "target_pose": np.zeros((1,), dtype=np.float64),
             "duration": 0.0,
         }
 
@@ -72,12 +72,12 @@ class Robotiq85(mp.Process):
 
         # build ring buffer
         if receive_keys is None:
-            receive_keys = ["is_opened", "is_closed"]
+            receive_keys = ["OpenOrClose"]
 
         example = dict()
         for key in receive_keys:
-            example[key] = np.array([1 if getattr(self, key)() else 0])
-        example["robot_receive_timestamp"] = time.time()
+            example[key] = 0    # open
+        example["gripper_receive_timestamp"] = time.time()
         ring_buffer = SharedMemoryRingBuffer.create_from_examples(
             shm_manager=shm_manager,
             examples=example,
@@ -130,13 +130,13 @@ class Robotiq85(mp.Process):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
-    def excecute(self, pose, duration=0.1):
+    def execute(self, pose, duration=0.1):
         assert self.is_alive()
         pose = np.array(pose)
         assert pose.shape == (1,)
 
         message = {
-            "cmd": Command.SERVOL.value,
+            "cmd": Command.ACTIVATE.value,
             "target_pose": pose,
             "duration": duration,
         }
@@ -162,14 +162,29 @@ class Robotiq85(mp.Process):
             self.activate(timeout=0.05)
 
             # main loop
+            dt = 1.0 / self.frequency
+
             iter_idx = 0
+            target_pose = 0  # open
+            curr_status = "OPEN"
             keep_running = True
             while keep_running:
+                t_start = time.perf_counter()
+
+                t_now = time.monotonic()
                 # update robot state
                 state = dict()
+                if target_pose:  # close only when it's open
+                    if curr_status == "OPEN":
+                        self.close()
+                        curr_status = "CLOSE"
+                else:  # open only when it's closed
+                    if curr_status == "CLOSE":
+                        self.open()
+                        curr_status = "OPEN"
                 for key in self.receive_keys:
-                    state[key] = np.array([1 if getattr(self, key)() else 0])
-                state["robot_receive_timestamp"] = time.time()
+                    state[key] = target_pose
+                state["gripper_receive_timestamp"] = time.time()
                 self.ring_buffer.put(state)
 
                 # fetch command from queue
@@ -190,10 +205,24 @@ class Robotiq85(mp.Process):
                         # stop immediately, ignore later commands
                         break
                     elif cmd == Command.ACTIVATE.value:
-                        pass
+                        target_pose = command["target_pose"]
+                        duration = float(command["duration"])
+                        curr_time = t_now + dt
+                        t_insert = curr_time + duration
+
+                        if self.verbose:
+                            cprint(
+                                f"[ROBOTIQ85Controller] New pose target: {target_pose}",
+                                "red",
+                            )
                     else:
                         keep_running = False
                         break
+                # regulate frequency
+                t_end = time.perf_counter()
+                if t_end - t_start < dt:
+                    time.sleep(dt - t_end + t_start)
+
                 # first loop successful, ready to receive command
                 if iter_idx == 0:
                     print("Gripper ready event is set!!!")
@@ -201,6 +230,7 @@ class Robotiq85(mp.Process):
                 iter_idx += 1
 
         finally:
+            self.open()
             self.disconnectFromDevice()
 
     def connectToDevice(self, device):
@@ -407,7 +437,7 @@ class Robotiq85(mp.Process):
             return self.wait_until_stopped(timeout)
         return True
 
-    def stop(self, block=False, timeout=-1):
+    def _stop(self, block=False, timeout=-1):
         cmd = {n: 0 for n in "rACT rGTO rATR rPR rSP rFR".split()}
         cmd["rACT"] = 1
         cmd["rGTO"] = 0
@@ -433,12 +463,11 @@ if __name__ == "__main__":
     shm_manager = SharedMemoryManager()
     shm_manager.start()
 
-    gripper = Robotiq85(shm_manager=shm_manager, frequency=100, receive_keys=None)
-
-    for _ in range(6):
-        time.sleep(2)
-
-        if gripper.is_closed():
-            gripper.open()
-        elif gripper.is_opened():
-            gripper.close()
+    with Robotiq85(
+        shm_manager=shm_manager, frequency=100, receive_keys=None
+    ) as gripper:
+        for _ in range(3):
+            time.sleep(1)
+            gripper.execute(pose=[1])
+            time.sleep(1)
+            gripper.execute(pose=[0])        
