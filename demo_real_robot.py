@@ -80,9 +80,9 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
             cv2.setNumThreads(1)
 
             # realsense exposure
-            env.realsense.set_exposure(exposure=120, gain=0)
+            env.realsense.set_exposure(exposure=200, gain=10)
             # realsense white balance
-            env.realsense.set_white_balance(white_balance=5900)
+            # env.realsense.set_white_balance(white_balance=5900)
 
             time.sleep(3.0)
             cprint("Ready!", on_color="on_red")
@@ -161,7 +161,7 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                 sm_state = sm.get_motion_state_transformed()
                 # print(sm_state)
                 dpos = sm_state[:3] * (env.max_pos_speed / frequency)
-                drot_xyz = sm_state[3:] * (env.max_rot_speed / frequency)
+                drot_xyz = sm_state[3:] * (env.max_rot_speed / frequency) * np.array([1, 1, -1])
 
                 # ------------- Button Features -------------
                 current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]

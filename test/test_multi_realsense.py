@@ -32,7 +32,7 @@ def test():
     from utils.cv2_utils import get_image_transform
 
     color_transform = get_image_transform(
-        input_res=(1280, 720), output_res=(640, 480), bgr_to_rgb=False
+        input_res=(1280, 720), output_res=(640, 480), bgr_to_rgb=True
     )
 
     def transform(data):
@@ -47,15 +47,17 @@ def test():
     with MultiRealsense(
         resolution=(1280, 720),
         capture_fps=30,
-        record_fps=20,
+        record_fps=15,
         enable_color=True,
         # advanced_mode_config=config,
+        put_downsample=False,
         transform=transform,
         recording_transform=transform,
         video_recorder=video_recorder,
         verbose=True,
     ) as realsense:
-        realsense.set_exposure(exposure=150, gain=5)
+        realsense.set_exposure(exposure=200, gain=10)
+        # realsense.set_white_balance(white_balance=5900)
         intr = realsense.get_intrinsics()
         print(intr)
 
@@ -68,8 +70,9 @@ def test():
         vis_img = None
         while True:
             out = realsense.get(out=out)
-
-            bgr = [item["color"] for item in out.values()]
+            bgr = [
+                cv2.cvtColor(item["color"], cv2.COLOR_BGR2RGB) for item in out.values()
+            ]
             vis_img = np.concatenate(list(bgr), axis=0, out=vis_img)
             cv2.imshow("default", vis_img)
             key = cv2.pollKey()
