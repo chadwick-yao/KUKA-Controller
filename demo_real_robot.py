@@ -1,7 +1,7 @@
 """
 Usage:
 (robodiff)$ python demo_real_robot.py -o <demo_save_dir> --robot_ip <ip> --robot_port <port>
-e.g python demo_real_robot.py -o "data/demo_data" --robot_ip "172.31.1.147" --robot_port 30001 --frequency 20
+e.g python demo_real_robot.py -o "data/demo_data" --robot_ip "172.31.1.147" --robot_port 30001 --frequency 20 -ps 2.0 
 
 Robot movement:
 Move your SpaceMouse to move the robot EEF (locked in xy plane).
@@ -46,13 +46,36 @@ from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
     "--frequency", "-f", default=10, type=float, help="Control frequency in Hz."
 )
 @click.option(
+    "--pos_sensitivity",
+    "-ps",
+    default=1.0,
+    type=float,
+    help="Position control sensitivity.",
+)
+@click.option(
+    "--rot_sensitivity",
+    "-rs",
+    default=1.0,
+    type=float,
+    help="Rotation control sensitivity.",
+)
+@click.option(
     "--command_latency",
     "-cl",
     default=0.01,
     type=float,
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
-def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latency):
+def main(
+    output,
+    robot_ip,
+    robot_port,
+    vis_camera_idx,
+    frequency,
+    command_latency,
+    pos_sensitivity,
+    rot_sensitivity,
+):
     dt = 1 / frequency
 
     with SharedMemoryManager() as shm_manager:
@@ -160,8 +183,12 @@ def main(output, robot_ip, robot_port, vis_camera_idx, frequency, command_latenc
                 # get teleop command
                 sm_state = sm.get_motion_state_transformed()
                 # print(sm_state)
-                dpos = sm_state[:3] * (env.max_pos_speed / frequency)
-                drot_xyz = sm_state[3:] * (env.max_rot_speed / frequency) * np.array([1, 1, -1])
+                dpos = sm_state[:3] * (env.max_pos_speed / frequency) * pos_sensitivity
+                drot_xyz = (
+                    sm_state[3:]
+                    * (env.max_rot_speed / frequency)
+                    * np.array([1, 1, -1]) * rot_sensitivity
+                )
 
                 # ------------- Button Features -------------
                 current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
