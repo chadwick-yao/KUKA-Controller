@@ -76,7 +76,7 @@ class Robotiq85(mp.Process):
 
         example = dict()
         for key in receive_keys:
-            example[key] = 0    # open
+            example[key] = 0  # open
         example["gripper_receive_timestamp"] = time.time()
         ring_buffer = SharedMemoryRingBuffer.create_from_examples(
             shm_manager=shm_manager,
@@ -466,8 +466,9 @@ if __name__ == "__main__":
     with Robotiq85(
         shm_manager=shm_manager, frequency=100, receive_keys=None
     ) as gripper:
+        time.sleep(1)
         for _ in range(3):
             time.sleep(1)
             gripper.execute(pose=[1])
             time.sleep(1)
-            gripper.execute(pose=[0])        
+            gripper.execute(pose=[0])

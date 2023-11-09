@@ -10,6 +10,7 @@ import skvideo.io
 import numpy as np
 import scipy.spatial.transform as st
 
+from ipdb import set_trace
 from omegaconf import OmegaConf
 from termcolor import colored, cprint
 from multiprocessing.managers import SharedMemoryManager
@@ -26,16 +27,53 @@ from utils.cv2_utils import get_image_transform
 from utils.real_inference_utils import get_real_obs_dict, get_real_obs_resolution
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
+"""
+Usage:
+(robodiff)$ python eval_real_robot.py -i <ckpt_path> -o <save_dir> --robot_ip <ip_of_ur5>
+
+================ Human in control ==============
+Robot movement:
+Move your SpaceMouse to move the robot EEF (locked in xy plane).
+Press SpaceMouse right button to unlock z axis.
+Press SpaceMouse left button to enable rotation axes.
+
+Recording control:
+Click the opencv window (make sure it's in focus).
+Press "C" to start evaluation (hand control over to policy).
+Press "Q" to exit program.
+
+================ Policy in control ==============
+Make sure you can hit the robot hardware emergency-stop button quickly! 
+
+Recording control:
+Press "S" to stop evaluation and gain control back.
+"""
 
 
-@click.command
-@click.option("--input_path", "-ip", required=True, help="Path to checkpoint")
-@click.option("--output_path", "-op", required=True, help="Directory to save recording")
+@click.command()
 @click.option(
-    "--robot_ip", "rp", required=True, help="Robot's IP address. e.g. 172.31.1.147"
+    "--input_path",
+    "-ip",
+    default="/media/shawn/Yiu1/19.58.34_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
+    required=True,
+    help="Path to checkpoint",
 )
 @click.option(
-    "--frequency", "-f", default=10, type=float, help="Control frequency in Hz."
+    "--output_path",
+    "-op",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/demo_data1",
+    required=True,
+    help="Directory to save recording",
+)
+@click.option(
+    "--robot_ip",
+    "-ri",
+    default="172.31.1.147",
+    required=True,
+    help="Robot's IP address. e.g. 172.31.1.147",
+)
+@click.option(
+    "--frequency", "-f", default=20, type=int, help="Control frequency in Hz."
 )
 @click.option(
     "--command_latency",
@@ -73,7 +111,7 @@ OmegaConf.register_new_resolver("eval", eval, replace=True)
 @click.option(
     "--pos_sensitivity",
     "-ps",
-    default=1.0,
+    default=8.0,
     type=float,
     help="Position control sensitivity.",
 )
@@ -98,7 +136,8 @@ def main(
     pos_sensitivity,
     rot_sensitivity,
 ):
-    # TODO: load match_dataset
+    # load match_dataset
+
     match_camera_idx = 0
     episode_first_frame_map = dict()
     if match_dataset is not None:
@@ -115,11 +154,14 @@ def main(
     # load chechpoint
     ckpt_path = input_path
     payload = torch.load(open(ckpt_path, "rb"), pickle_module=dill)
-    cfg = payload("cfg")
+    cfg = payload["cfg"]
+    cfg._target_ = "codebase.diffusion_policy.workspace.train_diffusion_transformer_hybrid_workspace.TrainDiffusionTransformerHybridWorkspace"
+    cfg.policy._target_ = "codebase.diffusion_policy.policy.diffusion_transformer_hybrid_image_policy.DiffusionTransformerHybridImagePolicy"
+    cfg.ema._target_ = "codebase.diffusion_policy.model.diffusion.ema_model.EMAModel"
+
     cls = hydra.utils.get_class(cfg._target_)
     workspace: BaseWorkspace = cls(cfg)
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
-
     # policy
     action_offset = 0
     delta_action = False
@@ -134,7 +176,7 @@ def main(
     policy.num_inference_steps = 16  # DDIM inference iterations
     policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
 
-    # TODO: setup robot
+    # setup robot
     dt = 1 / frequency
 
     obs_res = get_real_obs_resolution(cfg.task.shape_meta)
@@ -182,6 +224,9 @@ def main(
                 obs_dict = dict_apply(
                     obs_dict_np, lambda x: torch.from_numpy(x).unsqueeze(0).to(device)
                 )
+                for k, v in obs_dict.items():
+                    if len(v.shape) == 2:
+                        obs_dict[k] = torch.unsqueeze(v, 2)
                 result = policy.predict_action(obs_dict)
                 action = result["action"][0].detach().to("cpu").numpy()
                 assert action.shape[-1] == 7
@@ -195,6 +240,7 @@ def main(
                 t_start = time.monotonic()
                 iter_idx = 0
                 last_button = [False, False]
+                G_target_pose = 0  # open
                 while True:
                     # caculate timing
                     t_cycle_end = t_start + (iter_idx + 1) * dt
@@ -318,6 +364,9 @@ def main(
                                 obs_dict_np,
                                 lambda x: torch.from_numpy(x).unsqueeze(0).to(device),
                             )
+                            for k, v in obs_dict.items():
+                                if len(v.shape) == 2:
+                                    obs_dict[k] = torch.unsqueeze(v, 2)
                             result = policy.predict_action(obs_dict)
                             # this action starts from the first obs step
                             action = result["action"][0].detach().to("cpu").numpy()
@@ -445,3 +494,7 @@ def main(
                     env.end_episode()
 
                 print("Stopped.")
+
+
+if __name__ == "__main__":
+    main()
