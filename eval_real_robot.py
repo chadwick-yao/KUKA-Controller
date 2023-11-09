@@ -341,7 +341,7 @@ def main(
                     # reduces overall latency
                     frame_latency = 1 / 30
                     precise_wait(eval_t_start - frame_latency, time_func=time.time)
-                    cprint("Started!", "yellow")
+                    cprint("Started!", color="yellow")
 
                     iter_idx = 0
                     term_area_start_timestamp = float("inf")
@@ -370,7 +370,7 @@ def main(
                                     obs_dict[k] = torch.unsqueeze(v, 2)
                             result = policy.predict_action(obs_dict)
                             # this action starts from the first obs step
-                            action = result["action"][0].detach().to("cpu").numpy()
+                            action = result["action"][0].detach().to("cpu").numpy() # 1 n_acts 7 -> n_acts 7
                             print("Inference latency:", time.time() - s)
 
                         # convert policy action to env actions
