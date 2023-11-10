@@ -174,7 +174,7 @@ class Robotiq85(mp.Process):
                 t_now = time.monotonic()
                 # update robot state
                 state = dict()
-                if target_pose:  # close only when it's open
+                if np.around(target_pose):  # close only when it's open
                     if curr_status == "OPEN":
                         self.close()
                         curr_status = "CLOSE"

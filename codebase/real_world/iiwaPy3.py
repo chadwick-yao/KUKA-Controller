@@ -96,12 +96,13 @@ class IIWAPositionalController(BaseClient, mp.Process):
 
         # build ring buffer
         if receive_keys is None:
-            receive_keys = ["EEFpos", "Jpos"]
+            receive_keys = ["EEFpos", "EEFrot", "Jpos"]
 
         example = dict()
-        init_keys = ["EEFPos", "JointsPos"]
-        for idx, key in enumerate(init_keys):
-            example[receive_keys[idx]] = np.array(getattr(self, "get" + key)())
+        pose = np.array(getattr(self, "getEEFPos")())
+        example[receive_keys[0]] = pose[:3]
+        example[receive_keys[1]] = pose[3:]
+        example[receive_keys[2]] = np.array(getattr(self, "getJointsPos")())
         example["robot_receive_timestamp"] = time.time()
         ring_buffer = SharedMemoryRingBuffer.create_from_examples(
             shm_manager=shm_manager,
@@ -206,7 +207,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
             # main loop
             dt = 1.0 / self.frequency
             curr_pose = self.getEEFPos()
-            
+
             target_pose = copy.deepcopy(curr_pose)
             # use monotonic time to make sure the control loop never go backward
             curr_t = time.monotonic()
@@ -230,10 +231,15 @@ class IIWAPositionalController(BaseClient, mp.Process):
 
                 # update robot state
                 state = dict()
-                for key in self.receive_keys:
-                    state[key] = np.array(
-                        getattr(self, "sendEEfPositionGetActual" + key)(target_pose)
-                    )
+                ActualPose = np.array(
+                    getattr(self, "sendEEfPositionGetActualEEFpos")(target_pose)
+                )
+                state["EEFpos"] = ActualPose[:3]
+                state["EEFrot"] = ActualPose[3:]
+                state["Jpos"] = np.array(
+                    getattr(self, "sendEEfPositionGetActualJpos")(target_pose)
+                )
+
                 state["robot_receive_timestamp"] = time.time()
                 self.ring_buffer.put(state)
                 # cprint(f"Moved to {pose_command}", "green")

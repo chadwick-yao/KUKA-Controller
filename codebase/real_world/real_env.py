@@ -26,7 +26,8 @@ from utils.cv2_utils import get_image_transform, optimal_row_cols
 
 DEFAULT_OBS_KEY_MAP = {
     # robot
-    "EEFpos": "robot_eef_pose",
+    "EEFpos": "robot_eef_pos",
+    "EEFrot": "robot_eef_rot",
     "Jpos": "robot_joint",
     # gripper
     "OpenOrClose": "gripper_pose",

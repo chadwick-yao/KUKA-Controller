@@ -73,7 +73,7 @@ Press "S" to stop evaluation and gain control back.
     help="Robot's IP address. e.g. 172.31.1.147",
 )
 @click.option(
-    "--frequency", "-f", default=20, type=int, help="Control frequency in Hz."
+    "--frequency", "-f", default=10, type=int, help="Control frequency in Hz."
 )
 @click.option(
     "--command_latency",
@@ -204,7 +204,7 @@ def main(
             cv2.setNumThreads(1)
 
             # realsense exposure
-            env.realsense.set_exposure(exposure=120, gain=0)
+            env.realsense.set_exposure(exposure=200, gain=10)
             # realsense white balance
             # env.realsense.set_white_balance(white_balance=5900)
 
@@ -229,6 +229,7 @@ def main(
                         obs_dict[k] = torch.unsqueeze(v, 2)
                 result = policy.predict_action(obs_dict)
                 action = result["action"][0].detach().to("cpu").numpy()
+                print(f"actions shape: {action.shape}")
                 assert action.shape[-1] == 7
                 del result
 
@@ -236,7 +237,7 @@ def main(
             while True:
                 cprint("Human in control!", color="yellow")
                 state = env.get_robot_state()
-                target_pose = state["EEFpos"]
+                target_pose = np.append(state["EEFpos"], state["EEFrot"])
                 t_start = time.monotonic()
                 iter_idx = 0
                 last_button = [False, False]
@@ -340,7 +341,7 @@ def main(
                     # reduces overall latency
                     frame_latency = 1 / 30
                     precise_wait(eval_t_start - frame_latency, time_func=time.time)
-                    print("Started!")
+                    cprint("Started!", "yellow")
 
                     iter_idx = 0
                     term_area_start_timestamp = float("inf")
@@ -373,20 +374,25 @@ def main(
                             print("Inference latency:", time.time() - s)
 
                         # convert policy action to env actions
+                        action = action[:steps_per_inference, :]
                         if delta_action:
                             assert len(action) == 1
                             if perv_target_pose is None:
-                                perv_target_pose = obs["robot_eef_pose"][-1]
+                                perv_target_pose = np.append(
+                                    obs["robot_eef_pos"][-1],
+                                    obs["robot_eef_rot"][-1],
+                                    obs["gripper_pose"][-1],
+                                )
                             this_target_pose = perv_target_pose.copy()
-                            this_target_pose[[0, 1]] += action[-1]
+                            this_target_pose[:6] += action[-1][:6]
+                            this_target_pose[6] = action[-1][6]
                             perv_target_pose = this_target_pose
                             this_target_poses = np.expand_dims(this_target_pose, axis=0)
                         else:
                             this_target_poses = np.zeros(
-                                (len(action), len(target_pose)), dtype=np.float64
+                                (action.shape), dtype=np.float64
                             )
-                            this_target_poses[:] = target_pose
-                            this_target_poses[:, [0, 1]] = action
+                            this_target_poses[:] = action
 
                         # deal with timing
                         # the same step actions are always the target for
@@ -411,14 +417,19 @@ def main(
                             action_timestamps = action_timestamps[is_new]
 
                         # clip actions
-                        this_target_poses[:, :2] = np.clip(
-                            this_target_poses[:, :2], [0.25, -0.45], [0.77, 0.40]
-                        )
+                        # this_target_poses[:, :2] = np.clip(
+                        #     this_target_poses[:, :2], [0.25, -0.45], [0.77, 0.40]
+                        # )
 
+                        this_target_poses[:, 6] = np.clip(
+                            this_target_poses[:, 6], 0.0, 1.0
+                        )
                         # execute actions
                         env.exec_actions(
                             actions=this_target_poses, timestamps=action_timestamps
                         )
+                        print(f"Submitted action shape: {this_target_poses.shape}")
+                        print(f"Submitted action: {this_target_poses}")
                         print(f"Submitted {len(this_target_poses)} steps of actions.")
 
                         # visualize
@@ -462,7 +473,9 @@ def main(
                                 -4.07186655e-04,
                             ]
                         )
-                        curr_pose = obs["robot_eef_pose"][-1]
+                        curr_pose = np.concatenate(
+                            (obs["robot_eef_pos"][-1], obs["robot_eef_rot"][-1])
+                        )
                         dist = np.linalg.norm((curr_pose - term_pose)[:2], axis=-1)
                         if dist < 0.03:
                             # in termination area

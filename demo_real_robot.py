@@ -1,7 +1,7 @@
 """
 Usage:
 (robodiff)$ python demo_real_robot.py -o <demo_save_dir> --robot_ip <ip> --robot_port <port>
-e.g python demo_real_robot.py -o "data/demo_data" --robot_ip "172.31.1.147" --robot_port 30001 --frequency 20 -ps 2.0 
+e.g python demo_real_robot.py -o "data/test_data" --robot_ip "172.31.1.147" --robot_port 30001 --frequency 20 -ps 2.0 
 
 Robot movement:
 Move your SpaceMouse to move the robot EEF (locked in xy plane).
@@ -100,17 +100,33 @@ def main(
             shm_manager=shm_manager,
             max_pos_speed=float(frequency),
         ) as env:
+            # import hydra
+            # from tqdm import tqdm
+            # from omegaconf import OmegaConf
+
+            # OmegaConf.register_new_resolver("eval", eval, replace=True)
+
+            # with hydra.initialize("./codebase/diffusion_policy/config"):
+            #     cfg = hydra.compose("train_diffusion_transformer_hybrid_workspace")
+            #     OmegaConf.resolve(cfg)
+            #     dataset = hydra.utils.instantiate(cfg.task.dataset)
+
+            # print(dataset.replay_buffer.root.tree())
+            # episode_end = dataset.replay_buffer.root["meta"]["episode_ends"][0]
+            # actions_set = dataset.replay_buffer.root["data"]["action"][:episode_end]
+            # print(actions_set.shape)
+
             cv2.setNumThreads(1)
 
             # realsense exposure
-            env.realsense.set_exposure(exposure=200, gain=10)
+            env.realsense.set_exposure(exposure=300, gain=10)
             # realsense white balance
             # env.realsense.set_white_balance(white_balance=5900)
 
             time.sleep(3.0)
             cprint("Ready!", on_color="on_red")
             state = env.get_robot_state()
-            target_pose = state["EEFpos"]
+            target_pose = np.append(state["EEFpos"], state["EEFrot"])
 
             t_start = time.monotonic()
             iter_idx = 0
@@ -187,7 +203,8 @@ def main(
                 drot_xyz = (
                     sm_state[3:]
                     * (env.max_rot_speed / frequency)
-                    * np.array([1, 1, -1]) * rot_sensitivity
+                    * np.array([1, 1, -1])
+                    * rot_sensitivity
                 )
 
                 # ------------- Button Features -------------
