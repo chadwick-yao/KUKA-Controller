@@ -151,7 +151,7 @@ def main(
                 episode_first_frame_map[episode_idx] = frames[0]
     print(f"Loaded initial frame for {len(episode_first_frame_map)} episodes")
 
-    # load chechpoint
+    # load checkpoint
     ckpt_path = input_path
     payload = torch.load(open(ckpt_path, "rb"), pickle_module=dill)
     cfg = payload["cfg"]
