@@ -86,7 +86,12 @@ The saved data form is like below:
 **How to obtain target_pose/action?**
 
 ```python
+# current EEF pose (without any transformation)
+target_pose
+
+# spacemouse states
 sm_state = sm.get_motion_state_transformed()
+## scale spacemouse states
 dpos = (
     sm_state[:3] * (env.max_pos_speed / frequency) * pos_sensitivity
 )
@@ -96,9 +101,12 @@ drot_xyz = (
     * np.array([1, 1, -1])
     * rot_sensitivity
 )
-
+## spacemouse euler -> quat
 drot = st.Rotation.from_euler("xyz", drot_xyz)
+
+# target EEF pos = current EEF pos + dpos
 target_pose[:3] += dpos
+# target EEF rot = drot * current EEF rot quat
 target_pose[3:] = (
     drot * st.Rotation.from_euler("zyx", target_pose[3:])
 ).as_euler("zyx")
