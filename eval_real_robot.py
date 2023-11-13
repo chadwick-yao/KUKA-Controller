@@ -54,7 +54,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/Yiu1/19.58.34_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
+    default="/media/shawn/Yiu1/22.45.46_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
     required=True,
     help="Path to checkpoint",
 )

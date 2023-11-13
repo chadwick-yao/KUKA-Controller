@@ -56,7 +56,7 @@ def test():
         video_recorder=video_recorder,
         verbose=True,
     ) as realsense:
-        realsense.set_exposure(exposure=200, gain=10)
+        realsense.set_exposure(exposure=250, gain=10)
         # realsense.set_white_balance(white_balance=5900)
         intr = realsense.get_intrinsics()
         print(intr)

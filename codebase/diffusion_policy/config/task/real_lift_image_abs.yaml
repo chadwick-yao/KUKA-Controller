@@ -6,19 +6,19 @@ shape_meta: &shape_meta
       shape: [3, 640, 480]
       type: rgb
 
-    # robot_eef_pos:
-    #   shape: [3]
-    # robot_eef_rot:
-    #   shape: [3]
-    robot_eef_pose:
-      shape: [6]
+    robot_eef_pos:
+      shape: [3]
+    robot_eef_rot:
+      shape: [3]
+    # robot_eef_pose:
+    #   shape: [6]
     gripper_pose:
       shape: [1]
 
   action:
     shape: [7]
 
-dataset_path: &dataset_path /media/shawn/Yiu1/demo_data
+dataset_path: &dataset_path /media/shawn/Yiu1/two_camera_data
 abs_action: &abs_action True
 
 dataset:
