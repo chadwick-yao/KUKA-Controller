@@ -55,6 +55,52 @@ $ python common/spacemouse.py
 $ python simTest.py
 ```
 
+## Real Environment Details
+
+### Threading Settings
+- real_env (main threading): Get observations, send commands to child threading, and recording videos, actions and observations.
+    - iiwaPy3 (Child threading): Execute commands, and update shared memory.
+    - robotiq85 (Child threading): Execute commands, and update shared memory.
+    - multirealsense (Multi child threading): Execute commands, and update shared memory.
+- spacemouse (main threading): Update shared memory.
+- keyboard (main threading): Update stage (stage means how many parts that the whole episode can be separated.)
+
+### Data Collection
+In `demo_real_robot.py`, `c` refers to starting recording a new episode, `s` refers to ending one episode, and `q` means quitting the process. There uses data from spacemouse as delta pose and regards the transformed pose as the next step action, then the next step action will call `execute_actions` in `real_env.py` to control child threading.
+
+Function `get_obs` from `real_env.py` will also recall its child threading function to get observations, and finally save them in `Dict`. After ending one episode, the `Dict` will be saved in the shared memory.
+
+The saved data form is like below:
+
+>- data
+>   - action
+>   - timestamps
+>   - stage
+>   - eef_rot
+>   - eef_pos
+>   - joints_pos
+>- meta
+>   - episode_ends
+>- videos
+
+### Model Training
+
+Just use Diffusion Policy to train that model with our collected data.
+
+### Evaluate Real Robot
+```python
+# load chechpoint
+# checkpoint to policy
+# Policy control loop
+## get observations
+## run inference
+## convert policy action to env actions (Here I modified because I don't know the original code is doing)
+## deal with timing
+## clip actions (I commended)
+## execute actions
+```
+
+
 ## TO DO
 - [x] Implement base robot controlling class.
 - [x] Implement SpaceMouse API to control iiwa.
@@ -64,13 +110,12 @@ $ python simTest.py
         - [x] callback
         - [x] grip controlling
         - [x] reset
-- [ ] Data Collection Base class
-- [ ] Real world. (Real machine contral)
+- [x] Real world. (Real machine control)
     - [x] SpaceMouse
-    - [ ] RealSense Camera
-    - [ ] Gripper
-    - [ ] Data Collection
+    - [x] RealSense Camera
+    - [x] Gripper
+    - [x] Data Collection
 
 NOT IMPORTANT:
 - [ ] Implement keyboard control.
-- [ ] Robot, Gripper, data collector, every of these parts need to hybrid from threding.
+- [x] Robot, Gripper, data collector, every of these parts need to hybrid from threading.
