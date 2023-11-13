@@ -95,8 +95,40 @@ Just use Diffusion Policy to train that model with our collected data.
 ## get observations
 ## run inference
 ## convert policy action to env actions (Here I modified because I don't know the original code is doing)
+if delta_action:
+    assert len(action) == 1
+    if perv_target_pose is None:
+        perv_target_pose = obs['robot_eef_pose'][-1]
+    this_target_pose = perv_target_pose.copy()
+    this_target_pose[[0,1]] += action[-1]
+    perv_target_pose = this_target_pose
+    this_target_poses = np.expand_dims(this_target_pose, axis=0)
+else:
+    this_target_poses = np.zeros((len(action), len(target_pose)), dtype=np.float64)
+    this_target_poses[:] = target_pose
+    this_target_poses[:,[0,1]] = action
 ## deal with timing
+action_timestamps = (np.arange(len(action), dtype=np.float64) + action_offset
+    ) * dt + obs_timestamps[-1]
+action_exec_latency = 0.01
+curr_time = time.time()
+is_new = action_timestamps > (curr_time + action_exec_latency)
+if np.sum(is_new) == 0:
+    # exceeded time budget, still do something
+    this_target_poses = this_target_poses[[-1]]
+    # schedule on next available step
+    next_step_idx = int(np.ceil((curr_time - eval_t_start) / dt))
+    action_timestamp = eval_t_start + (next_step_idx) * dt
+    print('Over budget', action_timestamp - curr_time)
+    action_timestamps = np.array([action_timestamp])
+else:
+    this_target_poses = this_target_poses[is_new]
+    action_timestamps = action_timestamps[is_new]
+
 ## clip actions (I commended)
+this_target_poses[:,:2] = np.clip(
+    this_target_poses[:,:2], [0.25, -0.45], [0.77, 0.40])
+
 ## execute actions
 ```
 
