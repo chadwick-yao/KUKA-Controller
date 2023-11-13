@@ -83,6 +83,41 @@ The saved data form is like below:
 >   - episode_ends
 >- videos
 
+**How to obtain target_pose/action?**
+
+```python
+sm_state = sm.get_motion_state_transformed()
+dpos = (
+    sm_state[:3] * (env.max_pos_speed / frequency) * pos_sensitivity
+)
+drot_xyz = (
+    sm_state[3:]
+    * (env.max_rot_speed / frequency)
+    * np.array([1, 1, -1])
+    * rot_sensitivity
+)
+
+drot = st.Rotation.from_euler("xyz", drot_xyz)
+target_pose[:3] += dpos
+target_pose[3:] = (
+    drot * st.Rotation.from_euler("zyx", target_pose[3:])
+).as_euler("zyx")
+```
+
+The final target_pose is our next step action, and then we send this command to instruct remoter to move, and final reply an actual EEF pose to client. Below is a example of target pose and difference between actual EEF pose and target pose.
+
+```text
+[614.42  -2.24 318.24   3.14  -0.     3.14]  |  [-0.03  0.24  0.55 -0.   -0.    0.  ]
+[614.42  -1.88 319.11   3.14  -0.     3.14]  |  [-0.05  0.26  0.56 -0.   -0.    0.  ]
+[614.42  -1.5  319.98   3.14  -0.     3.14]  |  [-0.03  0.26  0.68  0.    0.    0.  ]
+[614.42  -1.12 320.8    3.14  -0.     3.14]  |  [ 0.01  0.26  0.67 -0.    0.    0.  ]
+[614.42  -0.74 321.56   3.14  -0.     3.14]  |  [ 0.02  0.27  0.51 -0.    0.    0.  ]
+[614.42  -0.38 322.31   3.14  -0.     3.14]  |  [ 0.02  0.27  0.46  0.   -0.    0.  ]
+[614.42  -0.05 322.92   3.14  -0.     3.14]  |  [ 0.02  0.2   0.42 -0.    0.    0.  ]
+[614.42   0.19 323.39   3.14  -0.     3.14]  |  [-0.04  0.17  0.32 -0.   -0.    0.  ]
+[614.42   0.34 323.67   3.14  -0.     3.14]  |  [-0.06  0.18  0.25 -0.   -0.    0.  ]
+```
+
 ### Model Training
 
 Just use Diffusion Policy to train that model with our collected data.
