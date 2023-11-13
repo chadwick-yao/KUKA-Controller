@@ -167,6 +167,8 @@ def main(
                         key_counter.clear()
                         is_recording = False
                         cprint("Stopped.", on_color="on_red")
+                    elif key_stroke == KeyCode(char="r"):
+                        env.robot.reset_robot()
                     elif key_stroke == Key.backspace:
                         # Delete the most recent recorded episode
                         if click.confirm("Are you sure to drop an episode?"):
@@ -230,6 +232,9 @@ def main(
                 env.exec_actions(
                     actions=[np.append(target_pose, G_target_pose)],
                     timestamps=[t_command_target - time.monotonic() + time.time()],
+                    delta_actions=[
+                        np.append(np.concatenate((dpos, drot_xyz)), G_target_pose)
+                    ],
                     stages=[stage],
                 )
                 precise_wait(t_cycle_end)

@@ -56,7 +56,6 @@ class RealLiftImageDataset(BaseImageDataset):
         seed: int = 42,
         val_ratio: float = 0.0,
         max_train_episodes: Optional[int] = None,
-        delta_action: bool = False,
     ):
         assert os.path.isdir(dataset_path), f"{dataset_path} does not exist!"
 
@@ -101,24 +100,6 @@ class RealLiftImageDataset(BaseImageDataset):
                 shape_meta=shape_meta,
                 store=zarr.MemoryStore(),
             )
-
-        if delta_action:
-            # replace action as relative to previous frame
-            actions = replay_buffer["action"][:]
-            # support positions only at this time
-            assert actions.shape[1] <= 3
-            actions_diff = np.zeros_like(actions)
-            episode_ends = replay_buffer.episode_ends[:]
-            for i in range(len(episode_ends)):
-                start = 0
-                if i > 0:
-                    start = episode_ends[i - 1]
-                end = episode_ends[i]
-                # delta action is the difference between previous desired position and the current
-                # it should be scheduled at the previous timestep for the current timestep
-                # to ensure consistency with positional mode
-                actions_diff[start + 1 : end] = np.diff(actions[start:end], axis=0)
-            replay_buffer["action"][:] = actions_diff
 
         rgb_keys = list()
         lowdim_keys = list()

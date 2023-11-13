@@ -112,7 +112,11 @@ if __name__ == "__main__":
                             GRIPPER.close()
                             logger.info("Button 1 has been pressed.\nGripper closed!")
                     if current_button[1] and not last_button[1]:
-                        drot_or_not = 1 ^ drot_or_not
+                        # drot_or_not = 1 ^ drot_or_not
+                        REMOTER.realTime_stopDirectServoCartesian()
+                        REMOTER.reset_initial_state()
+                        next_eef_pos = REMOTER.getEEFPos()
+                        REMOTER.realTime_startDirectServoCartesian()
                         logger.info("Button 2 has been pressed.\nRot fixed/movable!")
 
                     time.sleep(1 / 100)

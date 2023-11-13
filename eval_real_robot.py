@@ -1,4 +1,5 @@
 import time
+import copy
 import click
 import cv2
 import torch
@@ -10,6 +11,7 @@ import skvideo.io
 import numpy as np
 import scipy.spatial.transform as st
 
+from einops import repeat
 from ipdb import set_trace
 from omegaconf import OmegaConf
 from termcolor import colored, cprint
@@ -164,7 +166,7 @@ def main(
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
     # policy
     action_offset = 0
-    delta_action = False
+    delta_action = True
 
     policy: BaseImagePolicy = workspace.model
     if cfg.training.use_ema:
@@ -370,24 +372,54 @@ def main(
                                     obs_dict[k] = torch.unsqueeze(v, 2)
                             result = policy.predict_action(obs_dict)
                             # this action starts from the first obs step
-                            action = result["action"][0].detach().to("cpu").numpy() # 1 n_acts 7 -> n_acts 7
+                            action = (
+                                result["action"][0].detach().to("cpu").numpy()
+                            )  # 1 n_acts 7 -> n_acts 7
                             print("Inference latency:", time.time() - s)
 
-                        # convert policy action to env actions
+                        # TODO: convert policy action to env actions
                         action = action[:steps_per_inference, :]
                         if delta_action:
-                            assert len(action) == 1
                             if perv_target_pose is None:
                                 perv_target_pose = np.append(
-                                    obs["robot_eef_pos"][-1],
-                                    obs["robot_eef_rot"][-1],
+                                    np.concatenate(
+                                        (
+                                            obs["robot_eef_pos"][-1],
+                                            obs["robot_eef_rot"][-1],
+                                        )
+                                    ),
                                     obs["gripper_pose"][-1],
                                 )
-                            this_target_pose = perv_target_pose.copy()
-                            this_target_pose[:6] += action[-1][:6]
-                            this_target_pose[6] = action[-1][6]
-                            perv_target_pose = this_target_pose
-                            this_target_poses = np.expand_dims(this_target_pose, axis=0)
+                                perv_target_pose = repeat(
+                                    perv_target_pose,
+                                    "dim -> r dim",
+                                    r=steps_per_inference,
+                                )
+                            else:
+                                perv_target_pose = repeat(
+                                    perv_target_pose[-1],
+                                    "dim -> r dim",
+                                    r=steps_per_inference,
+                                )
+                            this_target_poses = copy.deepcopy(perv_target_pose)
+
+                            for idx, item in enumerate(action):
+                                if idx == 0:
+                                    target_pose = this_target_poses[idx]
+                                else:
+                                    target_pose = this_target_poses[idx - 1]
+                                dpos, drot_xyz, grip = item[:3], item[3:6], item[6]
+                                drot = st.Rotation.from_euler("xyz", drot_xyz)
+                                target_pose[:3] += dpos
+                                target_pose[3:6] = (
+                                    drot
+                                    * st.Rotation.from_euler("zyx", target_pose[3:6])
+                                ).as_euler("zyx")
+                                target_pose[6] = grip
+
+                                this_target_poses[idx] = target_pose
+
+                            perv_target_pose = this_target_poses
                         else:
                             this_target_poses = np.zeros(
                                 (action.shape), dtype=np.float64

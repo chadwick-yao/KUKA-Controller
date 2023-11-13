@@ -34,6 +34,7 @@ class Command(enum.Enum):
     STOP = 0
     SERVOL = 1
     SCHEDULE_WAYPOINT = 2
+    RESET = 3
 
 
 class IIWAPositionalController(BaseClient, mp.Process):
@@ -174,6 +175,12 @@ class IIWAPositionalController(BaseClient, mp.Process):
         }
         self.input_queue.put(message)
 
+    def reset_robot(self):
+        message = {
+            "cmd": Command.RESET.value,
+        }
+        self.input_queue.put(message)
+
     def schedule_waypoint(self, pose, target_time):
         assert target_time > time.time()
         pose = np.array(pose)
@@ -299,6 +306,11 @@ class IIWAPositionalController(BaseClient, mp.Process):
                             last_waypoint_time=last_waypoint_time,
                         )
                         last_waypoint_time = target_time
+                    elif cmd == Command.RESET.value:
+                        self.realTime_stopDirectServoCartesian()
+                        self.reset_initial_state()
+                        target_pose = self.getEEFPos()
+                        self.realTime_startDirectServoCartesian()
                     else:
                         keep_running = False
                         break

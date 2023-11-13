@@ -188,6 +188,7 @@ class RealEnv:
         # recording buffers
         self.obs_accumulator = None
         self.action_accumulator = None
+        self.delta_action_accumulator = None
         self.stage_accumulator = None
 
         self.start_time = None
@@ -327,6 +328,7 @@ class RealEnv:
         self,
         actions: np.ndarray,
         timestamps: np.ndarray,
+        delta_actions: np.ndarray,
         stages: Optional[np.ndarray] = None,
     ):
         assert self.is_ready
@@ -334,6 +336,8 @@ class RealEnv:
             actions = np.array(actions)
         if not isinstance(timestamps, np.ndarray):
             timestamps = np.array(timestamps)
+        if not isinstance(delta_actions, np.ndarray):
+            delta_actions = np.array(delta_actions)
         if stages is None:
             stages = np.zeros_like(timestamps, dtype=np.int64)
         elif not isinstance(stages, np.ndarray):
@@ -344,6 +348,7 @@ class RealEnv:
         is_new = timestamps > receive_time
         new_actions = actions[is_new]
         new_timestamps = timestamps[is_new]
+        new_delta_actions = delta_actions[is_new]
         new_stages = stages[is_new]
 
         for i in range(len(new_actions)):
@@ -353,6 +358,8 @@ class RealEnv:
         # record actions
         if self.action_accumulator is not None:
             self.action_accumulator.put(new_actions, new_timestamps)
+        if self.delta_action_accumulator is not None:
+            self.delta_action_accumulator.put(new_delta_actions, new_timestamps)
         if self.stage_accumulator is not None:
             self.stage_accumulator.put(new_stages, new_timestamps)
 
@@ -390,6 +397,9 @@ class RealEnv:
         self.action_accumulator = TimestampActionAccumulator(
             start_time=start_time, dt=1 / self.frequency
         )
+        self.delta_action_accumulator = TimestampActionAccumulator(
+            start_time=start_time, dt=1 / self.frequency
+        )
         self.stage_accumulator = TimestampActionAccumulator(
             start_time=start_time, dt=1 / self.frequency
         )
@@ -412,13 +422,15 @@ class RealEnv:
             obs_timestamps = self.obs_accumulator.timestamps
 
             actions = self.action_accumulator.actions
+            delta_actions = self.delta_action_accumulator.actions
             action_timestamps = self.action_accumulator.timestamps
             stages = self.stage_accumulator.actions
             n_steps = min(len(obs_timestamps), len(action_timestamps))
             if n_steps > 0:
                 episode = dict()
                 episode["timestamp"] = obs_timestamps[:n_steps]
-                episode["action"] = actions[:n_steps]
+                # episode["action"] = actions[:n_steps]
+                episode["action"] = delta_actions[:n_steps]
                 episode["stage"] = stages[:n_steps]
                 for key, value in obs_data.items():
                     episode[key] = value[:n_steps]
@@ -428,6 +440,7 @@ class RealEnv:
 
             self.obs_accumulator = None
             self.action_accumulator = None
+            self.delta_action_accumulator = None
             self.stage_accumulator = None
 
     def drop_episode(self):
