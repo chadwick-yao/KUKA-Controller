@@ -20,6 +20,7 @@ import time
 import click
 import cv2
 import numpy as np
+import copy
 from termcolor import colored, cprint
 import scipy.spatial.transform as st
 from multiprocessing.managers import SharedMemoryManager
@@ -48,14 +49,14 @@ from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
 @click.option(
     "--pos_sensitivity",
     "-ps",
-    default=1.0,
+    default=32.0,
     type=float,
     help="Position control sensitivity.",
 )
 @click.option(
     "--rot_sensitivity",
     "-rs",
-    default=1.0,
+    default=0.4,
     type=float,
     help="Rotation control sensitivity.",
 )
@@ -98,24 +99,7 @@ def main(
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
-            max_pos_speed=float(frequency),
         ) as env:
-            # import hydra
-            # from tqdm import tqdm
-            # from omegaconf import OmegaConf
-
-            # OmegaConf.register_new_resolver("eval", eval, replace=True)
-
-            # with hydra.initialize("./codebase/diffusion_policy/config"):
-            #     cfg = hydra.compose("train_diffusion_transformer_hybrid_workspace")
-            #     OmegaConf.resolve(cfg)
-            #     dataset = hydra.utils.instantiate(cfg.task.dataset)
-
-            # print(dataset.replay_buffer.root.tree())
-            # episode_end = dataset.replay_buffer.root["meta"]["episode_ends"][0]
-            # actions_set = dataset.replay_buffer.root["data"]["action"][:episode_end]
-            # print(actions_set.shape)
-
             cv2.setNumThreads(1)
 
             # realsense exposure
@@ -169,6 +153,7 @@ def main(
                         cprint("Stopped.", on_color="on_red")
                     elif key_stroke == KeyCode(char="r"):
                         env.robot.reset_robot()
+                        target_pose = copy.deepcopy(env.robot.init_eef_pose)
                     elif key_stroke == Key.backspace:
                         # Delete the most recent recorded episode
                         if click.confirm("Are you sure to drop an episode?"):

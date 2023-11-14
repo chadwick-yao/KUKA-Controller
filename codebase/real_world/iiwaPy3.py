@@ -29,6 +29,8 @@ from codebase.shared_memory.shared_memory_queue import SharedMemoryQueue, Full, 
 from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
 from common.pose_trajectory_interpolator import PoseTrajectoryInterpolator
 
+np.set_printoptions(precision=2, suppress=True, linewidth=100)
+
 
 class Command(enum.Enum):
     STOP = 0
@@ -45,9 +47,9 @@ class IIWAPositionalController(BaseClient, mp.Process):
         host: str = "172.31.1.147",
         port: int = 30001,
         trans: Tuple = (0, 0, 0, 0, 0, 0),
-        frequency: int = 100,
-        max_pos_speed: float = 0.25,
-        max_rot_speed: float = 0.16,
+        frequency: int = 150,
+        max_pos_speed: float = 32,
+        max_rot_speed: float = 0.4,
         launch_timeout: int = 3,
         soft_real_time: bool = False,
         verbose: bool = False,
@@ -80,6 +82,10 @@ class IIWAPositionalController(BaseClient, mp.Process):
         self.soft_real_time = soft_real_time
         self.verbose = verbose
         self.get_max_k = get_max_k
+
+        # init pose (PTP)
+        self.reset_initial_state()
+        self.init_eef_pose = self.getEEFPos()
 
         # build input queue
         example = {
@@ -159,7 +165,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         self.stop()
 
     # ========= command methods ============
-    def servoL(self, pose, duration=0.1):
+    def servoL(self, pose, duration=0.02):
         """
         duration: desired time to reach pose
         """
@@ -209,8 +215,6 @@ class IIWAPositionalController(BaseClient, mp.Process):
             os.sched_setscheduler(0, os.SCHED_RR, os.sched_param(20))
 
         try:
-            # init pose (PTP)
-            self.reset_initial_state()
             # main loop
             dt = 1.0 / self.frequency
             curr_pose = self.getEEFPos()
@@ -233,23 +237,22 @@ class IIWAPositionalController(BaseClient, mp.Process):
                 t_now = time.monotonic()
                 # diff = t_now - pose_interp.times[-1]
                 # if diff > 0:
-                #     print('extrapolate', diff)
-                # pose_command = pose_interp(t_now)
-
+                #     print("extrapolate", diff)
+                pose_command = pose_interp(t_now)
+                # print(pose_command)
                 # update robot state
                 state = dict()
                 ActualPose = np.array(
-                    getattr(self, "sendEEfPositionGetActualEEFpos")(target_pose)
+                    getattr(self, "sendEEfPositionGetActualEEFpos")(pose_command)
                 )
                 state["EEFpos"] = ActualPose[:3]
                 state["EEFrot"] = ActualPose[3:]
                 state["Jpos"] = np.array(
-                    getattr(self, "sendEEfPositionGetActualJpos")(target_pose)
+                    getattr(self, "sendEEfPositionGetActualJpos")(pose_command)
                 )
 
                 state["robot_receive_timestamp"] = time.time()
                 self.ring_buffer.put(state)
-                # cprint(f"Moved to {pose_command}", "green")
 
                 # fetch command from queue
                 try:
@@ -278,13 +281,13 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         duration = float(command["duration"])
                         curr_time = t_now + dt
                         t_insert = curr_time + duration
-                        # pose_interp = pose_interp.drive_to_waypoint(
-                        #     pose=target_pose,
-                        #     time=t_insert,
-                        #     curr_time=curr_time,
-                        #     max_pos_speed=self.max_pos_speed,
-                        #     max_rot_speed=self.max_rot_speed,
-                        # )
+                        pose_interp = pose_interp.drive_to_waypoint(
+                            pose=target_pose,
+                            time=t_insert,
+                            curr_time=curr_time,
+                            max_pos_speed=self.max_pos_speed,
+                            max_rot_speed=self.max_rot_speed,
+                        )
                         last_waypoint_time = t_insert
                         if self.verbose:
                             cprint(
@@ -310,7 +313,14 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         self.realTime_stopDirectServoCartesian()
                         self.reset_initial_state()
                         target_pose = self.getEEFPos()
+                        self.init_eef_pose = target_pose
+                        if self.verbose:
+                            cprint(
+                                f"After resetting, target pose -> {target_pose}",
+                                color="blue",
+                            )
                         self.realTime_startDirectServoCartesian()
+                        break
                     else:
                         keep_running = False
                         break

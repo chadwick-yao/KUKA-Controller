@@ -56,7 +56,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/Yiu1/22.45.46_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
+    default="/media/shawn/Yiu1/19.30.27_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
     required=True,
     help="Path to checkpoint",
 )
@@ -85,7 +85,7 @@ Press "S" to stop evaluation and gain control back.
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
 @click.option(
-    "--max_duration", "-md", default=60, help="Max duration for each epoch in seconds."
+    "--max_duration", "-md", default=20, help="Max duration for each epoch in seconds."
 )
 @click.option(
     "--steps_per_inference",
@@ -113,14 +113,14 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--pos_sensitivity",
     "-ps",
-    default=8.0,
+    default=32.0,
     type=float,
     help="Position control sensitivity.",
 )
 @click.option(
     "--rot_sensitivity",
     "-rs",
-    default=1.0,
+    default=0.5,
     type=float,
     help="Rotation control sensitivity.",
 )
@@ -206,7 +206,7 @@ def main(
             cv2.setNumThreads(1)
 
             # realsense exposure
-            env.realsense.set_exposure(exposure=200, gain=10)
+            env.realsense.set_exposure(exposure=300, gain=10)
             # realsense white balance
             # env.realsense.set_white_balance(white_balance=5900)
 
@@ -327,6 +327,9 @@ def main(
                     # execute teleop command
                     env.exec_actions(
                         actions=[np.append(target_pose, G_target_pose)],
+                        delta_actions=[
+                            np.append(np.concatenate((dpos, drot_xyz)), G_target_pose)
+                        ],
                         timestamps=[t_command_target - time.monotonic() + time.time()],
                     )
                     precise_wait(t_cycle_end)
@@ -379,6 +382,7 @@ def main(
 
                         # TODO: convert policy action to env actions
                         action = action[:steps_per_inference, :]
+                        action[:, 3:] = 0
                         if delta_action:
                             if perv_target_pose is None:
                                 perv_target_pose = np.append(
@@ -447,6 +451,7 @@ def main(
                         else:
                             this_target_poses = this_target_poses[is_new]
                             action_timestamps = action_timestamps[is_new]
+                            action = action[is_new]
 
                         # clip actions
                         # this_target_poses[:, :2] = np.clip(
@@ -458,7 +463,9 @@ def main(
                         )
                         # execute actions
                         env.exec_actions(
-                            actions=this_target_poses, timestamps=action_timestamps
+                            actions=this_target_poses,
+                            delta_actions=action,
+                            timestamps=action_timestamps,
                         )
                         print(f"Submitted action shape: {this_target_poses.shape}")
                         print(f"Submitted action: {this_target_poses}")
