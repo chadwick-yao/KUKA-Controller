@@ -313,6 +313,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         self.realTime_stopDirectServoCartesian()
                         self.reset_initial_state()
                         target_pose = self.getEEFPos()
+                        curr_time = time.monotonic()
                         self.init_eef_pose = target_pose
                         if self.verbose:
                             cprint(
@@ -320,6 +321,11 @@ class IIWAPositionalController(BaseClient, mp.Process):
                                 color="blue",
                             )
                         self.realTime_startDirectServoCartesian()
+
+                        del pose_interp
+                        pose_interp = PoseTrajectoryInterpolator(
+                            times=[curr_time], poses=[target_pose]
+                        )
                         break
                     else:
                         keep_running = False
