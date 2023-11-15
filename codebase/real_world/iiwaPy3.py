@@ -49,7 +49,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         trans: Tuple = (0, 0, 0, 0, 0, 0),
         frequency: int = 150,
         max_pos_speed: float = 32,
-        max_rot_speed: float = 0.4,
+        max_rot_speed: float = 0.5,
         launch_timeout: int = 3,
         soft_real_time: bool = False,
         verbose: bool = False,
@@ -58,8 +58,8 @@ class IIWAPositionalController(BaseClient, mp.Process):
         """
         frequency: socket connection frequency
         receive_keys: data definition
-        max_pos_speed: m/s
-        max_rot_speed: rad/s
+        real max_pos_speed: mm/s
+        real max_rot_speed: rad/s
         soft_real_time: enables round-robin scheduling and real-time priority reuqires running scripts before hand
         """
         # super init
@@ -165,7 +165,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         self.stop()
 
     # ========= command methods ============
-    def servoL(self, pose, duration=0.02):
+    def servoL(self, pose, duration=0.05):
         """
         duration: desired time to reach pose
         """

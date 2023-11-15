@@ -55,8 +55,8 @@ class RealEnv:
         obs_key_map: Dict = DEFAULT_OBS_KEY_MAP,
         obs_float32: bool = False,
         # action
-        max_pos_speed: float = 1,
-        max_rot_speed: float = 0.2,
+        max_pos_speed: float = 32,
+        max_rot_speed: float = 0.5,
         # video capture params
         video_capture_fps: int = 30,
         video_capture_resolution: Tuple = (1280, 720),
@@ -161,6 +161,8 @@ class RealEnv:
             host=robot_ip,
             port=robot_port,
             receive_keys=None,
+            max_pos_speed=max_pos_speed,
+            max_rot_speed=max_rot_speed,
         )
         gripper = Robotiq85(
             shm_manager=shm_manager,
@@ -352,8 +354,8 @@ class RealEnv:
         new_stages = stages[is_new]
 
         for i in range(len(new_actions)):
-            self.robot.servoL(pose=new_actions[i][:6])
-            self.gripper.execute(pose=[new_actions[i][6]])
+            self.robot.servoL(pose=new_actions[i][:6], duration=0.3 / self.frequency)   # duration = SpaceMouseDeadzone / RealEnvFrequency
+            self.gripper.execute(pose=[new_actions[i][6]], duration=0.3 / self.frequency)
 
         # record actions
         if self.action_accumulator is not None:

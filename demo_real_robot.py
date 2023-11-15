@@ -49,16 +49,16 @@ from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
 @click.option(
     "--pos_sensitivity",
     "-ps",
-    default=32.0,
+    default=1.0,
     type=float,
-    help="Position control sensitivity.",
+    help="Position control sensitivity. [0.0, 1.0] (The less value it is, the smoother it gets but slower.)",
 )
 @click.option(
     "--rot_sensitivity",
     "-rs",
-    default=0.4,
+    default=1.0,
     type=float,
-    help="Rotation control sensitivity.",
+    help="Rotation control sensitivity. [0.0, 1.0] (The less value it is, the smoother it gets but slower.)",
 )
 @click.option(
     "--command_latency",
@@ -81,9 +81,7 @@ def main(
 
     with SharedMemoryManager() as shm_manager:
         with KeystrokeCounter() as key_counter, Spacemouse(
-            shm_manager=shm_manager,
-            get_max_k=30,
-            frequency=200,
+            shm_manager=shm_manager, get_max_k=30, frequency=200, deadzone=0.3
         ) as sm, RealEnv(
             output_dir=output,
             robot_ip=robot_ip,

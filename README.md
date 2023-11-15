@@ -175,6 +175,35 @@ this_target_poses[:,:2] = np.clip(
 ## execute actions
 ```
 
+**Synchronize the Speend of Remoter and Client**
+
+Assume that we have below in remoter:
+
+$f_c$: communication frequency
+
+$pVel_{max}$: real robot position velocity (mm/s)
+
+$rVel_{max}$: real robot rotation velocity (rad/s)
+
+Assume that we have below in client,
+
+$opt_{sm}$: SpaceMouse output
+
+$f_r$: real env frequency
+
+$p_s$: delta position sensitivity [0.0, 1.0], the less it is, the smoother remoter will be but slower.
+
+$p_d=pVel_{max}/f_r$: desired position speed 
+
+$delta_p=opt_{sm}[:3]*p_d*p_s$: position action
+
+$r_s$: delta rotation sensitivity [0.0, 1.0], the less it is, the smoother remoter will be but slower.
+
+$r_d=rVel_{max}/f_r$: desired rotation speed 
+
+$delta_r=opt_{sm}[3:]*r_d*r_s$: rotation action
+
+
 
 ## TO DO
 - [x] Implement base robot controlling class.

@@ -56,7 +56,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/Yiu1/19.30.27_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
+    default="/media/shawn/Yiu1/18.46.24_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
     required=True,
     help="Path to checkpoint",
 )
@@ -113,16 +113,16 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--pos_sensitivity",
     "-ps",
-    default=32.0,
+    default=1.0,
     type=float,
-    help="Position control sensitivity.",
+    help="Position control sensitivity. [0.0, 1.0] (The less value it is, the smoother it gets but slower.)",
 )
 @click.option(
     "--rot_sensitivity",
     "-rs",
-    default=0.5,
+    default=1.0,
     type=float,
-    help="Rotation control sensitivity.",
+    help="Rotation control sensitivity. [0.0, 1.0] (The less value it is, the smoother it gets but slower.)",
 )
 def main(
     input_path,
@@ -188,7 +188,7 @@ def main(
     print("action_offset:", action_offset)
 
     with SharedMemoryManager() as shm_manager:
-        with Spacemouse(shm_manager=shm_manager) as sm, RealEnv(
+        with Spacemouse(shm_manager=shm_manager, deadzone=0.3) as sm, RealEnv(
             output_dir=output_path,
             robot_ip=robot_ip,
             frequency=frequency,

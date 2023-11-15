@@ -8,7 +8,7 @@ np.set_printoptions(precision=2, suppress=True, linewidth=100)
 
 if __name__ == "__main__":
     out_replay_buffer = real_data_to_replay_buffer(
-        dataset_path="/media/shawn/Yiu1/side_view",
+        dataset_path="/media/shawn/Yiu1/real_lift",
         out_resolutions=(640, 480),
         lowdim_keys=[
             "action",
@@ -32,6 +32,7 @@ if __name__ == "__main__":
             out_replay_buffer.root["data"]["camera_0"][: episode_end[0]],
             "b w h c -> b w h c",
         ),
+        fps=20,
     )
     imageio.mimsave(
         "output_1.mp4",
@@ -39,4 +40,5 @@ if __name__ == "__main__":
             out_replay_buffer.root["data"]["camera_1"][: episode_end[0]],
             "b w h c -> b w h c",
         ),
+        fps=20,
     )
