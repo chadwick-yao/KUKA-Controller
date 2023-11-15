@@ -195,13 +195,13 @@ $p_s$: delta position sensitivity [0.0, 1.0], the less it is, the smoother remot
 
 $p_d=pVel_{max}/f_r$: desired position speed 
 
-$delta_p=opt_{sm}[:3]*p_d*p_s$: position action
+$delta_p=opt_{sm}[:3]\times p_d\times p_s$: position action
 
 $r_s$: delta rotation sensitivity [0.0, 1.0], the less it is, the smoother remoter will be but slower.
 
 $r_d=rVel_{max}/f_r$: desired rotation speed 
 
-$delta_r=opt_{sm}[3:]*r_d*r_s$: rotation action
+$delta_r=opt_{sm}[3:]\times r_d\times r_s$: rotation action
 
 
 
