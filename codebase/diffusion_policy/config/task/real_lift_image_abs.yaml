@@ -3,7 +3,10 @@ name: real_lift_image
 shape_meta: &shape_meta
   obs:
     camera_0:
-      shape: [3, 640, 480]
+      shape: [3, 480, 640]
+      type: rgb
+    camera_1:
+      shape: [3, 480, 640]
       type: rgb
 
     robot_eef_pos:
@@ -18,7 +21,7 @@ shape_meta: &shape_meta
   action:
     shape: [7]
 
-dataset_path: &dataset_path /media/shawn/Yiu1/two_camera_data
+dataset_path: &dataset_path /home/shawn/Documents/pyspacemouse-coppeliasim/data/lift_data
 abs_action: &abs_action True
 
 dataset:

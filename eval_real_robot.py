@@ -56,14 +56,14 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/Yiu1/18.46.24_train_diffusion_transformer_hybrid_real_lift_image/checkpoints/latest.ckpt",
+    default="/media/shawn/Yiu1/epoch=0750-val_loss=0.048.ckpt",
     required=True,
     help="Path to checkpoint",
 )
 @click.option(
     "--output_path",
     "-op",
-    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/demo_data1",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_result",
     required=True,
     help="Directory to save recording",
 )
@@ -85,12 +85,12 @@ Press "S" to stop evaluation and gain control back.
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
 @click.option(
-    "--max_duration", "-md", default=20, help="Max duration for each epoch in seconds."
+    "--max_duration", "-md", default=30, help="Max duration for each epoch in seconds."
 )
 @click.option(
     "--steps_per_inference",
     "-si",
-    default=6,
+    default=10,
     type=int,
     help="Action horizon for inference.",
 )
@@ -124,6 +124,7 @@ Press "S" to stop evaluation and gain control back.
     type=float,
     help="Rotation control sensitivity. [0.0, 1.0] (The less value it is, the smoother it gets but slower.)",
 )
+@click.option("--verbose", is_flag=True, help="print logging info or not")
 def main(
     input_path,
     output_path,
@@ -137,9 +138,9 @@ def main(
     match_dataset,
     pos_sensitivity,
     rot_sensitivity,
+    verbose,
 ):
     # load match_dataset
-
     match_camera_idx = 0
     episode_first_frame_map = dict()
     if match_dataset is not None:
@@ -202,6 +203,7 @@ def main(
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
+            # max_pos_speed=24,
         ) as env:
             cv2.setNumThreads(1)
 
@@ -231,7 +233,7 @@ def main(
                         obs_dict[k] = torch.unsqueeze(v, 2)
                 result = policy.predict_action(obs_dict)
                 action = result["action"][0].detach().to("cpu").numpy()
-                print(f"actions shape: {action.shape}")
+                print(f"actions: {action}")
                 assert action.shape[-1] == 7
                 del result
 
@@ -279,7 +281,6 @@ def main(
                         thickness=1,
                         color=(255, 255, 255),
                     )
-
                     cv2.imshow("default", vis_img[..., ::-1])
                     key_stroke = cv2.pollKey()
                     if key_stroke == ord("q"):
@@ -352,6 +353,7 @@ def main(
                     term_area_start_timestamp = float("inf")
                     perv_target_pose = None
                     while True:
+                        test_t_start = time.perf_counter()
                         t_cycle_end = t_start + (iter_idx + steps_per_inference) * dt
 
                         # get observations
@@ -370,6 +372,7 @@ def main(
                                 obs_dict_np,
                                 lambda x: torch.from_numpy(x).unsqueeze(0).to(device),
                             )
+                            # print(obs_dict.keys())
                             for k, v in obs_dict.items():
                                 if len(v.shape) == 2:
                                     obs_dict[k] = torch.unsqueeze(v, 2)
@@ -382,7 +385,12 @@ def main(
 
                         # TODO: convert policy action to env actions
                         action = action[:steps_per_inference, :]
-                        action[:, 3:] = 0
+                        mask = np.logical_and(
+                            action[:, :6] >= -0.02, action[:, :6] <= 0.02
+                        )
+                        action[:, :6][mask] = 0.0
+                        print(f"actions: {action}")
+                        # action[:, 3:6] = 0
                         if delta_action:
                             if perv_target_pose is None:
                                 perv_target_pose = np.append(
@@ -467,9 +475,13 @@ def main(
                             delta_actions=action,
                             timestamps=action_timestamps,
                         )
-                        print(f"Submitted action shape: {this_target_poses.shape}")
-                        print(f"Submitted action: {this_target_poses}")
-                        print(f"Submitted {len(this_target_poses)} steps of actions.")
+
+                        if verbose:
+                            print(f"Submitted action shape: {this_target_poses.shape}")
+                            print(f"Submitted action: {this_target_poses}")
+                            print(
+                                f"Submitted {len(this_target_poses)} steps of actions."
+                            )
 
                         # visualize
                         episode_id = env.replay_buffer.n_episodes
@@ -539,6 +551,10 @@ def main(
                         # wait for execution
                         precise_wait(t_cycle_end - frame_latency)
                         iter_idx += steps_per_inference
+                        if verbose:
+                            print(
+                                f"Inference Actual frequency {1/(time.perf_counter() - test_t_start)}"
+                            )
 
                 except KeyboardInterrupt:
                     print("Interrupted!")

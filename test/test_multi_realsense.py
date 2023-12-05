@@ -80,7 +80,7 @@ def test():
                 break
 
             time.sleep(1 / 60)
-            if time.time() > (rec_start_time + 20.0):
+            if time.time() > (rec_start_time + 40.0):
                 break
 
 

@@ -28,6 +28,7 @@ from codebase.real_world.real_env import RealEnv
 from common.spacemouse_shared_memory import Spacemouse
 from common.precise_sleep import precise_wait
 from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
+from common.sec_time_counter import SecTimeCounter
 
 
 @click.command()
@@ -67,6 +68,13 @@ from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
     type=float,
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
+@click.option(
+    "--time_limit_mode",
+    "-tlm",
+    default=15,
+    type=int,
+    help="Record a limited period of time.",
+)
 def main(
     output,
     robot_ip,
@@ -76,12 +84,13 @@ def main(
     command_latency,
     pos_sensitivity,
     rot_sensitivity,
+    time_limit_mode,
 ):
     dt = 1 / frequency
 
     with SharedMemoryManager() as shm_manager:
         with KeystrokeCounter() as key_counter, Spacemouse(
-            shm_manager=shm_manager, get_max_k=30, frequency=200, deadzone=0.3
+            shm_manager=shm_manager, get_max_k=30, frequency=200, deadzone=0.15
         ) as sm, RealEnv(
             output_dir=output,
             robot_ip=robot_ip,
@@ -97,6 +106,7 @@ def main(
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
+            max_pos_speed=128,
         ) as env:
             cv2.setNumThreads(1)
 
@@ -117,6 +127,7 @@ def main(
             last_button = [False, False]
             G_target_pose = 0  # open
 
+            timer: SecTimeCounter = SecTimeCounter(time_limit_mode)
             while not stop and env.robot.ready_servo.is_set():
                 # calculate timing
                 t_cycle_end = t_start + (iter_idx + 1) * dt
@@ -126,7 +137,19 @@ def main(
                 # pump obs
                 obs = env.get_obs()
 
-                # handle key presses
+                # handle timer process
+                if timer.stop_record_event.is_set():
+                    # stop recording
+                    env.end_episode()
+                    is_recording = False
+
+                    timer.stop()
+                    cprint("Timer stop!", on_color="on_blue")
+
+                    cprint("Stopped.", on_color="on_red")
+                    timer = SecTimeCounter(time_limit_mode)
+
+                # handle key process
                 press_events = key_counter.get_press_events()
                 for key_stroke in press_events:
                     if key_stroke == KeyCode(char="q"):
@@ -143,12 +166,20 @@ def main(
                         key_counter.clear()
                         is_recording = True
                         cprint("Recording!", on_color="on_green")
+
+                        timer.start()
+                        cprint("Timer start!", on_color="on_blue")
                     elif key_stroke == KeyCode(char="s"):
                         # Stop recording
                         env.end_episode()
                         key_counter.clear()
                         is_recording = False
+
+                        timer.stop()
+                        cprint("Timer stop!", on_color="on_blue")
+
                         cprint("Stopped.", on_color="on_red")
+                        timer = SecTimeCounter(time_limit_mode)
                     elif key_stroke == KeyCode(char="r"):
                         env.robot.reset_robot()
                         target_pose = copy.deepcopy(env.robot.init_eef_pose)
@@ -184,6 +215,7 @@ def main(
                 # get teleop command
                 sm_state = sm.get_motion_state_transformed()
                 # print(sm_state)
+
                 dpos = sm_state[:3] * (env.max_pos_speed / frequency) * pos_sensitivity
                 drot_xyz = (
                     sm_state[3:]

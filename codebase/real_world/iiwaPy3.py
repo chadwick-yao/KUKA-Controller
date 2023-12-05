@@ -392,9 +392,13 @@ class IIWAPositionalController(BaseClient, mp.Process):
             raise RuntimeError("Could not mount the specified TCP")
 
     def reset_initial_state(self):
-        init_jpos = [0, np.pi * 30 / 180, 0, -np.pi * 80 / 180, 0, np.pi * 70 / 180, 0]
-        init_vel = [0.05]
-
+        init_jpos = [0, np.pi * 30 / 180, 0, -np.pi * 90 / 180, 0, np.pi * 60 / 180, 0]
+        # joint_deviations = np.random.uniform(
+        #     low=-1.0 * 3.14 / 180, high=1.0 * 3.14 / 180, size=7
+        # )
+        # init_jpos += joint_deviations
+        init_vel = [0.2]
+        cprint(f"Reset to jpos: {init_jpos}", "blue")
         self.movePTPJointSpace(jpos=init_jpos, relVel=init_vel)
 
     # PTP motion
