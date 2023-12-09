@@ -56,7 +56,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/Yiu1/epoch=0750-val_loss=0.048.ckpt",
+    default="/media/shawn/Yiu1/epoch=0650-val_loss=0.047.ckpt",
     required=True,
     help="Path to checkpoint",
 )
@@ -90,7 +90,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--steps_per_inference",
     "-si",
-    default=10,
+    default=4,
     type=int,
     help="Action horizon for inference.",
 )
@@ -386,9 +386,9 @@ def main(
                         # TODO: convert policy action to env actions
                         action = action[:steps_per_inference, :]
                         mask = np.logical_and(
-                            action[:, :6] >= -0.02, action[:, :6] <= 0.02
+                            action[:, 3:6] >= -0.01, action[:, 3:6] <= 0.01
                         )
-                        action[:, :6][mask] = 0.0
+                        action[:, 3:6][mask] = 0.0
                         print(f"actions: {action}")
                         # action[:, 3:6] = 0
                         if delta_action:

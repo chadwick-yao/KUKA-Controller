@@ -21,7 +21,7 @@ shape_meta: &shape_meta
   action:
     shape: [7]
 
-dataset_path: &dataset_path /home/shawn/Documents/pyspacemouse-coppeliasim/data/lift_data
+dataset_path: &dataset_path /media/shawn/My Passport/diffusion_policy_data/12_05lift
 abs_action: &abs_action True
 
 dataset:

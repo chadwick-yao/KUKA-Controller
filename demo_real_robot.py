@@ -71,7 +71,7 @@ from common.sec_time_counter import SecTimeCounter
 @click.option(
     "--time_limit_mode",
     "-tlm",
-    default=15,
+    default=10,
     type=int,
     help="Record a limited period of time.",
 )
@@ -107,6 +107,7 @@ def main(
             video_crf=21,
             shm_manager=shm_manager,
             max_pos_speed=128,
+            max_rot_speed=1.0,
         ) as env:
             cv2.setNumThreads(1)
 

@@ -19,8 +19,10 @@ with hydra.initialize("./codebase/diffusion_policy/config"):
 print(dataset.replay_buffer.root.tree())
 episode_end = dataset.replay_buffer.root["meta"]["episode_ends"]
 actions_set = dataset.replay_buffer.root["data"]["action"][
-    episode_end[3] : episode_end[4]
+    episode_end[-2] : episode_end[-1]
 ]
+for action in actions_set:
+    print(action)
 # eef_pos = dataset.replay_buffer.root["data"]["robot_eef_pos"][:episode_end]
 # eef_rot = dataset.replay_buffer.root["data"]["robot_eef_rot"][:episode_end]
 
@@ -32,13 +34,18 @@ actions_set = dataset.replay_buffer.root["data"]["action"][
 # shm_manager.start()
 
 # REMOTER = IIWAPositionalController(
-#     shm_manager=shm_manager, host="172.31.1.147", port=30001, receive_keys=None
+#     shm_manager=shm_manager,
+#     host="172.31.1.147",
+#     port=30001,
+#     receive_keys=None,
+#     max_pos_speed=128,
+#     max_rot_speed=0.8,
 # )
 # gripper = Robotiq85(shm_manager=shm_manager, frequency=100, receive_keys=None)
 # Open = True
 # last = 0
 
-# time.sleep(5)
+# time.sleep(1)
 
 # REMOTER.reset_initial_state()
 # init_eef_pos = REMOTER.getEEFPos()
@@ -46,7 +53,7 @@ actions_set = dataset.replay_buffer.root["data"]["action"][
 # time.sleep(3)
 # try:
 #     for delta_act in actions_set:
-#         dpos, drot_xyz = delta_act[:3], delta_act[3:6] * np.array([1, 1, -1])
+#         dpos, drot_xyz = delta_act[:3], delta_act[3:6] * np.array([1, 1, 1])
 #         drot = st.Rotation.from_euler("xyz", drot_xyz)
 #         init_eef_pos[:3] += dpos
 #         init_eef_pos[3:] = (
@@ -62,7 +69,7 @@ actions_set = dataset.replay_buffer.root["data"]["action"][
 #                 gripper.open()
 #         _ = REMOTER.sendEEfPositionGetActualEEFpos(init_eef_pos)
 #         # _ = REMOTER.sendEEfPositionGetActualEEFpos(next_eef_pos[:6])
-#         time.sleep(1 / 25)
+#         time.sleep(1 / 10)
 #         last = delta_act[6]
 #     # while True:
 #     #     ipt = int(input("input: "))
