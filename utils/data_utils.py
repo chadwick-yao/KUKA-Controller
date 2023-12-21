@@ -1,17 +1,38 @@
 import numpy as np
 import math
+import scipy.spatial.transform as st
+
+
+def pose_euler2quat(pose):
+    assert pose.shape == (6,) or pose.shape == (7,)
+    if pose.shape == (6,):
+        tmp_pose = np.zeros(7)
+        tmp_pose[:3] = pose[:3]
+        tmp_pose[3:] = st.Rotation.from_euler("zyx", pose[3:]).as_quat()
+    else:
+        tmp_pose = np.zeros(6)
+        tmp_pose[:3] = pose[:3]
+        tmp_pose[3:] = st.Rotation.from_quat(pose[3:]).as_euler("zyx")
+        
+    return tmp_pose
+
 
 def get_pose_mat(pose):
     position, orientation = pose
     if len(orientation) == 4:
         from transforms3d.quaternions import quat2mat
+
         x, y, z, w = orientation
         quat_new = [w, x, y, z]
         mat_R = quat2mat(quat_new)
     elif len(orientation) == 3:
         from transforms3d.euler import euler2mat
+
         x, y, z = orientation
-        mat_R = np.dot(np.dot(np.array(euler2mat(x, 0, 0)), np.array(euler2mat(0, y, 0))), euler2mat(0, 0, z))
+        mat_R = np.dot(
+            np.dot(np.array(euler2mat(x, 0, 0)), np.array(euler2mat(0, y, 0))),
+            euler2mat(0, 0, z),
+        )
     else:
         raise NotImplementedError
 
@@ -59,7 +80,9 @@ def rotation_matrix(angle, direction, point=None):
     cosa = math.cos(angle)
     direction = unit_vector(direction[:3])
     # rotation matrix around unit vector
-    R = np.array(((cosa, 0.0, 0.0), (0.0, cosa, 0.0), (0.0, 0.0, cosa)), dtype=np.float32)
+    R = np.array(
+        ((cosa, 0.0, 0.0), (0.0, cosa, 0.0), (0.0, 0.0, cosa)), dtype=np.float32
+    )
     R += np.outer(direction, direction) * (1.0 - cosa)
     direction *= sina
     R += np.array(
@@ -135,13 +158,16 @@ def unit_vector(data, axis=None, out=None):
     data /= length
     if out is None:
         return data
-    
+
+
 def String2Double(message: str, size: int):
-    """ Convert string type to double type """
+    """Convert string type to double type"""
 
     strVals = message.split("_")
-    assert size <= len(strVals), f"You're trying to obtain {size} numbers which is out of range."
-    
+    assert size <= len(
+        strVals
+    ), f"You're trying to obtain {size} numbers which is out of range."
+
     try:
         doubleVals = [float(strVals[idx]) for idx in range(size)]
         return doubleVals

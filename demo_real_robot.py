@@ -29,6 +29,7 @@ from common.spacemouse_shared_memory import Spacemouse
 from common.precise_sleep import precise_wait
 from common.keystroke_counter import KeystrokeCounter, Key, KeyCode
 from common.sec_time_counter import SecTimeCounter
+from utils.data_utils import pose_euler2quat
 
 
 @click.command()
@@ -71,7 +72,7 @@ from common.sec_time_counter import SecTimeCounter
 @click.option(
     "--time_limit_mode",
     "-tlm",
-    default=10,
+    default=15,
     type=int,
     help="Record a limited period of time.",
 )
@@ -90,7 +91,10 @@ def main(
 
     with SharedMemoryManager() as shm_manager:
         with KeystrokeCounter() as key_counter, Spacemouse(
-            shm_manager=shm_manager, get_max_k=30, frequency=200, deadzone=0.15
+            shm_manager=shm_manager,
+            get_max_k=30,
+            frequency=200,
+            deadzone=(0, 0, 0, 0.1, 0.1, 0.1),
         ) as sm, RealEnv(
             output_dir=output,
             robot_ip=robot_ip,
@@ -107,7 +111,7 @@ def main(
             video_crf=21,
             shm_manager=shm_manager,
             max_pos_speed=128,
-            max_rot_speed=1.0,
+            max_rot_speed=0.5,
         ) as env:
             cv2.setNumThreads(1)
 
@@ -221,17 +225,17 @@ def main(
                 drot_xyz = (
                     sm_state[3:]
                     * (env.max_rot_speed / frequency)
-                    * np.array([1, 1, -1])
+                    * np.array([-1, 1, -1])
                     * rot_sensitivity
                 )
 
                 # ------------- Button Features -------------
                 current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
-                if not current_button[0]:
-                    # translation mode
-                    drot_xyz[:] = 0
-                else:
-                    dpos[:] = 0
+                # if not current_button[0]:
+                #     # translation mode
+                #     drot_xyz[:] = 0
+                # else:
+                #     dpos[:] = 0
                 if current_button[1] and not last_button[1]:
                     G_target_pose = 1 ^ G_target_pose
                 last_button = current_button
@@ -245,6 +249,7 @@ def main(
 
                 # cprint(f"Target to {target_pose}", "yellow")
                 # execute teleop command
+                target_pose = pose_euler2quat(target_pose)
                 env.exec_actions(
                     actions=[np.append(target_pose, G_target_pose)],
                     timestamps=[t_command_target - time.monotonic() + time.time()],

@@ -9,22 +9,27 @@ def rotation_distance(a: st.Rotation, b: st.Rotation) -> float:
     return (b * a.inv()).magnitude()
 
 
-def pose_distance(start_pose, end_pose):
+def pose_distance(start_pose, end_pose, use_quat):
     start_pose = np.array(start_pose)
     end_pose = np.array(end_pose)
     start_pos = start_pose[:3]
     end_pos = end_pose[:3]
-    start_rot = st.Rotation.from_rotvec(start_pose[3:])
-    end_rot = st.Rotation.from_rotvec(end_pose[3:])
+    if use_quat:
+        start_rot = st.Rotation.from_quat(start_pose[3:])
+        end_rot = st.Rotation.from_quat(end_pose[3:])
+    else:
+        start_rot = st.Rotation.from_euler("zyx", start_pose[:, 3:])
+        end_rot = st.Rotation.from_euler("zyx", end_pose[:, 3:])
     pos_dist = np.linalg.norm(end_pos - start_pos)
     rot_dist = rotation_distance(start_rot, end_rot)
     return pos_dist, rot_dist
 
 
 class PoseTrajectoryInterpolator:
-    def __init__(self, times: np.ndarray, poses: np.ndarray):
+    def __init__(self, times: np.ndarray, poses: np.ndarray, use_quat=True):
         assert len(times) >= 1
         assert len(poses) == len(times)
+        self.use_quat = use_quat
         if not isinstance(times, np.ndarray):
             times = np.array(times)
         if not isinstance(poses, np.ndarray):
@@ -40,7 +45,10 @@ class PoseTrajectoryInterpolator:
             assert np.all(times[1:] >= times[:-1])
 
             pos = poses[:, :3]
-            rot = st.Rotation.from_euler("zyx", poses[:, 3:])
+            if not self.use_quat:
+                rot = st.Rotation.from_euler("zyx", poses[:, 3:])
+            else:
+                rot = st.Rotation.from_quat(poses[:, 3:])
 
             self.pos_interp = si.interp1d(times, pos, axis=0, assume_sorted=True)
             self.rot_interp = st.Slerp(times, rot)
@@ -58,9 +66,13 @@ class PoseTrajectoryInterpolator:
             return self._poses
         else:
             n = len(self.times)
-            poses = np.zeros((n, 6))
+            poses = np.zeros((n, 7)) if self.use_quat else np.zeros((n, 6))
             poses[:, :3] = self.pos_interp.y
-            poses[:, 3:] = self.rot_interp(self.times).as_euler("zyx")
+            poses[:, 3:] = (
+                self.rot_interp(self.times).as_quat()
+                if self.use_quat
+                else self.rot_interp(self.times).as_euler("zyx")
+            )
             return poses
 
     def trim(self, start_t: float, end_t: float) -> "PoseTrajectoryInterpolator":
@@ -83,7 +95,7 @@ class PoseTrajectoryInterpolator:
         time = max(time, curr_time)
 
         curr_pose = self(curr_time)
-        pos_dist, rot_dist = pose_distance(curr_pose, pose)
+        pos_dist, rot_dist = pose_distance(curr_pose, pose, self.use_quat)
         pos_min_duration = pos_dist / max_pos_speed
         rot_min_duration = rot_dist / max_rot_speed
         duration = time - curr_time
@@ -190,7 +202,7 @@ class PoseTrajectoryInterpolator:
             is_single = True
             t = np.array([t])
 
-        pose = np.zeros((len(t), 6))
+        pose = np.zeros((len(t), 7)) if self.use_quat else np.zeros((len(t), 6))
         if self.single_step:
             pose[:] = self._poses[0]
         else:
@@ -198,9 +210,13 @@ class PoseTrajectoryInterpolator:
             end_time = self.times[-1]
             t = np.clip(t, start_time, end_time)
 
-            pose = np.zeros((len(t), 6))
+            pose = np.zeros((len(t), 7)) if self.use_quat else np.zeros((len(t), 6))
             pose[:, :3] = self.pos_interp(t)
-            pose[:, 3:] = self.rot_interp(t).as_euler("zyx")
+            pose[:, 3:] = (
+                self.rot_interp(t).as_quat()
+                if self.use_quat
+                else self.rot_interp(t).as_euler("zyx")
+            )
 
         if is_single:
             pose = pose[0]

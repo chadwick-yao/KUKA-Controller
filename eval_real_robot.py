@@ -27,6 +27,7 @@ from codebase.diffusion_policy.common.pytorch_util import dict_apply
 
 from utils.cv2_utils import get_image_transform
 from utils.real_inference_utils import get_real_obs_dict, get_real_obs_resolution
+from utils.data_utils import pose_euler2quat
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
 """
@@ -56,7 +57,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/Yiu1/epoch=0650-val_loss=0.047.ckpt",
+    default="/media/shawn/My Passport/diffusion_policy_data/12_19Lift/latest.ckpt",
     required=True,
     help="Path to checkpoint",
 )
@@ -107,7 +108,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--match_dataset",
     "-m",
-    default=None,
+    default=None,  # "/media/shawn/My Passport/diffusion_policy_data/12_19Lift",
     help="Dataset used to overlay and adjust initial condition",
 )
 @click.option(
@@ -176,7 +177,7 @@ def main(
     policy.eval().to(device)
 
     ## set inference params
-    policy.num_inference_steps = 16  # DDIM inference iterations
+    policy.num_inference_steps = 32  # DDIM inference iterations
     policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
 
     # setup robot
@@ -189,7 +190,12 @@ def main(
     print("action_offset:", action_offset)
 
     with SharedMemoryManager() as shm_manager:
-        with Spacemouse(shm_manager=shm_manager, deadzone=0.3) as sm, RealEnv(
+        with Spacemouse(
+            shm_manager=shm_manager,
+            get_max_k=30,
+            frequency=200,
+            deadzone=(0, 0, 0, 0.1, 0.1, 0.1),
+        ) as sm, RealEnv(
             output_dir=output_path,
             robot_ip=robot_ip,
             frequency=frequency,
@@ -203,7 +209,8 @@ def main(
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
-            # max_pos_speed=24,
+            max_pos_speed=128,
+            max_rot_speed=0.5,
         ) as env:
             cv2.setNumThreads(1)
 
@@ -291,6 +298,9 @@ def main(
                         # Exit human control loop
                         # hand control over to the policy
                         break
+                    elif key_stroke == ord("r"):
+                        env.robot
+                        target_pose = copy.deepcopy(env.robot.init_eef_pose)
 
                     precise_wait(t_sample)
                     # get teleop command
@@ -302,7 +312,7 @@ def main(
                     drot_xyz = (
                         sm_state[3:]
                         * (env.max_rot_speed / frequency)
-                        * np.array([1, 1, -1])
+                        * np.array([-1, 1, -1])
                         * rot_sensitivity
                     )
 
@@ -326,6 +336,7 @@ def main(
 
                     # cprint(f"Target to {target_pose}", "yellow")
                     # execute teleop command
+                    target_pose = pose_euler2quat(target_pose)
                     env.exec_actions(
                         actions=[np.append(target_pose, G_target_pose)],
                         delta_actions=[
@@ -470,8 +481,16 @@ def main(
                             this_target_poses[:, 6], 0.0, 1.0
                         )
                         # execute actions
+                        raw = this_target_poses.shape[0]
+                        tmp_target_poses = np.zeros(raw, 7)
+                        tmp_target_poses[:, :3] = this_target_poses[:, :3]
+                        tmp_target_poses[:, -1] = this_target_poses[:, -1]
+                        for idx in range(raw):
+                            tmp_target_poses[idx, :-1] = pose_euler2quat(
+                                this_target_poses[idx, :-1]
+                            )
                         env.exec_actions(
-                            actions=this_target_poses,
+                            actions=tmp_target_poses,
                             delta_actions=action,
                             timestamps=action_timestamps,
                         )

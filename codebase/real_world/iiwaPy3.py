@@ -7,6 +7,7 @@ import copy
 import enum
 import os
 from termcolor import colored, cprint
+from utils.data_utils import pose_euler2quat
 
 FORMAT = "[%(asctime)s][%(levelname)s]: %(message)s"
 logging.basicConfig(
@@ -54,6 +55,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         soft_real_time: bool = False,
         verbose: bool = False,
         get_max_k: int = 128,
+        use_quat: bool = True,
     ) -> None:
         """
         frequency: socket connection frequency
@@ -82,6 +84,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         self.soft_real_time = soft_real_time
         self.verbose = verbose
         self.get_max_k = get_max_k
+        self.use_quat = use_quat
 
         # init pose (PTP)
         self.reset_initial_state()
@@ -90,7 +93,9 @@ class IIWAPositionalController(BaseClient, mp.Process):
         # build input queue
         example = {
             "cmd": Command.SERVOL.value,
-            "target_pose": np.zeros((6,), dtype=np.float64),
+            "target_pose": np.zeros((7,), dtype=np.float64)
+            if self.use_quat
+            else np.zeros((6,), dtype=np.float64),
             "duration": 0.0,  # desired time to reach pose
             "target_time": 0.0,
         }
@@ -172,7 +177,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         assert self.is_alive()
         assert duration >= (1 / self.frequency)
         pose = np.array(pose)
-        assert pose.shape == (6,)
+        assert pose.shape == (6,) or pose.shape == (7,)
 
         message = {
             "cmd": Command.SERVOL.value,
@@ -220,10 +225,14 @@ class IIWAPositionalController(BaseClient, mp.Process):
             curr_pose = self.getEEFPos()
 
             target_pose = copy.deepcopy(curr_pose)
+            if self.use_quat:
+                target_pose = pose_euler2quat(target_pose)
             # use monotonic time to make sure the control loop never go backward
             curr_t = time.monotonic()
             last_waypoint_time = curr_t
-            pose_interp = PoseTrajectoryInterpolator(times=[curr_t], poses=[curr_pose])
+            pose_interp = PoseTrajectoryInterpolator(
+                times=[curr_t], poses=[target_pose]
+            )
 
             iter_idx = 0
             keep_running = True
@@ -239,6 +248,8 @@ class IIWAPositionalController(BaseClient, mp.Process):
                 # if diff > 0:
                 #     print("extrapolate", diff)
                 pose_command = pose_interp(t_now)
+                if self.use_quat:
+                    pose_command = pose_euler2quat(pose_command)
                 # print(pose_command)
                 # update robot state
                 state = dict()
@@ -315,6 +326,8 @@ class IIWAPositionalController(BaseClient, mp.Process):
                         target_pose = self.getEEFPos()
                         curr_time = time.monotonic()
                         self.init_eef_pose = target_pose
+                        if self.use_quat:
+                            target_pose = pose_euler2quat(target_pose)
                         if self.verbose:
                             cprint(
                                 f"After resetting, target pose -> {target_pose}",
@@ -392,7 +405,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
             raise RuntimeError("Could not mount the specified TCP")
 
     def reset_initial_state(self):
-        init_jpos = [0, np.pi * 30 / 180, 0, -np.pi * 90 / 180, 0, np.pi * 60 / 180, 0]
+        init_jpos = [0, np.pi * 30 / 180, 0, -np.pi * 80 / 180, 0, np.pi * 70 / 180, 0]
         # joint_deviations = np.random.uniform(
         #     low=-1.0 * 3.14 / 180, high=1.0 * 3.14 / 180, size=7
         # )
