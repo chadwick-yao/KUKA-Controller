@@ -249,9 +249,8 @@ def main(
 
                 # cprint(f"Target to {target_pose}", "yellow")
                 # execute teleop command
-                target_pose = pose_euler2quat(target_pose)
                 env.exec_actions(
-                    actions=[np.append(target_pose, G_target_pose)],
+                    actions=[np.append(pose_euler2quat(target_pose), G_target_pose)],
                     timestamps=[t_command_target - time.monotonic() + time.time()],
                     delta_actions=[
                         np.append(np.concatenate((dpos, drot_xyz)), G_target_pose)

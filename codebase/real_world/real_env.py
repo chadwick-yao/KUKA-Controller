@@ -354,8 +354,8 @@ class RealEnv:
         new_stages = stages[is_new]
 
         for i in range(len(new_actions)):
-            self.robot.servoL(pose=new_actions[i][:-1], duration=0.1 / self.frequency)   # duration = SpaceMouseDeadzone / RealEnvFrequency
-            self.gripper.execute(pose=[new_actions[i][-1]], duration=0.1 / self.frequency)
+            self.robot.servoL(pose=new_actions[i][:-1], duration=0.25 / self.frequency)   # duration = SpaceMouseDeadzone / RealEnvFrequency
+            self.gripper.execute(pose=[new_actions[i][-1]], duration=0.25 / self.frequency)
 
         # record actions
         if self.action_accumulator is not None:

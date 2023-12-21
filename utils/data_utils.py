@@ -4,6 +4,8 @@ import scipy.spatial.transform as st
 
 
 def pose_euler2quat(pose):
+    if not isinstance(pose, np.ndarray):
+        pose = np.array(pose)
     assert pose.shape == (6,) or pose.shape == (7,)
     if pose.shape == (6,):
         tmp_pose = np.zeros(7)

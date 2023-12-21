@@ -57,14 +57,14 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/My Passport/diffusion_policy_data/12_19Lift/latest.ckpt",
+    default="/media/shawn/My Passport/diffusion_policy_data/12_20pick/latest.ckpt",
     required=True,
     help="Path to checkpoint",
 )
 @click.option(
     "--output_path",
     "-op",
-    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_result",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_pick",
     required=True,
     help="Directory to save recording",
 )
@@ -91,7 +91,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--steps_per_inference",
     "-si",
-    default=4,
+    default=5,
     type=int,
     help="Action horizon for inference.",
 )
@@ -108,7 +108,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--match_dataset",
     "-m",
-    default=None,  # "/media/shawn/My Passport/diffusion_policy_data/12_19Lift",
+    default=None, # "/media/shawn/My Passport/diffusion_policy_data/12_20pick",
     help="Dataset used to overlay and adjust initial condition",
 )
 @click.option(
@@ -177,7 +177,7 @@ def main(
     policy.eval().to(device)
 
     ## set inference params
-    policy.num_inference_steps = 32  # DDIM inference iterations
+    policy.num_inference_steps = 16  # DDIM inference iterations
     policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
 
     # setup robot
@@ -318,11 +318,11 @@ def main(
 
                     # ------------- Button Features -------------
                     current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
-                    if not current_button[0]:
-                        # translation mode
-                        drot_xyz[:] = 0
-                    else:
-                        dpos[:] = 0
+                    # if not current_button[0]:
+                    #     # translation mode
+                    #     drot_xyz[:] = 0
+                    # else:
+                    #     dpos[:] = 0
                     if current_button[1] and not last_button[1]:
                         G_target_pose = 1 ^ G_target_pose
                     last_button = current_button
@@ -336,9 +336,10 @@ def main(
 
                     # cprint(f"Target to {target_pose}", "yellow")
                     # execute teleop command
-                    target_pose = pose_euler2quat(target_pose)
                     env.exec_actions(
-                        actions=[np.append(target_pose, G_target_pose)],
+                        actions=[
+                            np.append(pose_euler2quat(target_pose), G_target_pose)
+                        ],
                         delta_actions=[
                             np.append(np.concatenate((dpos, drot_xyz)), G_target_pose)
                         ],
@@ -482,7 +483,7 @@ def main(
                         )
                         # execute actions
                         raw = this_target_poses.shape[0]
-                        tmp_target_poses = np.zeros(raw, 7)
+                        tmp_target_poses = np.zeros((raw, 8))
                         tmp_target_poses[:, :3] = this_target_poses[:, :3]
                         tmp_target_poses[:, -1] = this_target_poses[:, -1]
                         for idx in range(raw):
