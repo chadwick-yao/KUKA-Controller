@@ -64,7 +64,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--output_path",
     "-op",
-    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_pick",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_pick_200",
     required=True,
     help="Directory to save recording",
 )
@@ -86,12 +86,12 @@ Press "S" to stop evaluation and gain control back.
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
 @click.option(
-    "--max_duration", "-md", default=30, help="Max duration for each epoch in seconds."
+    "--max_duration", "-md", default=20, help="Max duration for each epoch in seconds."
 )
 @click.option(
     "--steps_per_inference",
     "-si",
-    default=5,
+    default=6,
     type=int,
     help="Action horizon for inference.",
 )
@@ -108,7 +108,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--match_dataset",
     "-m",
-    default=None, # "/media/shawn/My Passport/diffusion_policy_data/12_20pick",
+    default=None,  # "/media/shawn/My Passport/diffusion_policy_data/12_20pick",
     help="Dataset used to overlay and adjust initial condition",
 )
 @click.option(
@@ -125,6 +125,7 @@ Press "S" to stop evaluation and gain control back.
     type=float,
     help="Rotation control sensitivity. [0.0, 1.0] (The less value it is, the smoother it gets but slower.)",
 )
+# @profile
 @click.option("--verbose", is_flag=True, help="print logging info or not")
 def main(
     input_path,
@@ -299,8 +300,15 @@ def main(
                         # hand control over to the policy
                         break
                     elif key_stroke == ord("r"):
-                        env.robot
+                        env.robot.reset_robot()
                         target_pose = copy.deepcopy(env.robot.init_eef_pose)
+
+                        target_pose[:3] += np.clip(
+                            np.random.normal(0, 5, size=3), -5, 5
+                        )
+                        target_pose[3:] += np.clip(
+                            np.random.normal(0, 1, size=3), -0.05, 0.05
+                        )
 
                     precise_wait(t_sample)
                     # get teleop command
@@ -369,7 +377,7 @@ def main(
                         t_cycle_end = t_start + (iter_idx + steps_per_inference) * dt
 
                         # get observations
-                        cprint("Get Obs!", color="blue")
+                        # cprint("Get Obs!", color="blue")
                         obs = env.get_obs()
                         obs_timestamps = obs["timestamp"]
                         print(f"Obs latency {time.time() - obs_timestamps[-1]}")
@@ -401,8 +409,7 @@ def main(
                             action[:, 3:6] >= -0.01, action[:, 3:6] <= 0.01
                         )
                         action[:, 3:6][mask] = 0.0
-                        print(f"actions: {action}")
-                        # action[:, 3:6] = 0
+                        # print(f"actions: {action}")
                         if delta_action:
                             if perv_target_pose is None:
                                 perv_target_pose = np.append(
@@ -429,9 +436,11 @@ def main(
 
                             for idx, item in enumerate(action):
                                 if idx == 0:
-                                    target_pose = this_target_poses[idx]
+                                    target_pose = copy.deepcopy(this_target_poses[idx])
                                 else:
-                                    target_pose = this_target_poses[idx - 1]
+                                    target_pose = copy.deepcopy(
+                                        this_target_poses[idx - 1]
+                                    )
                                 dpos, drot_xyz, grip = item[:3], item[3:6], item[6]
                                 drot = st.Rotation.from_euler("xyz", drot_xyz)
                                 target_pose[:3] += dpos
@@ -490,12 +499,19 @@ def main(
                             tmp_target_poses[idx, :-1] = pose_euler2quat(
                                 this_target_poses[idx, :-1]
                             )
-                        env.exec_actions(
-                            actions=tmp_target_poses,
-                            delta_actions=action,
-                            timestamps=action_timestamps,
-                        )
 
+                        # env.exec_actions(
+                        #     actions=tmp_target_poses,
+                        #     delta_actions=action,
+                        #     timestamps=action_timestamps,
+                        # )
+                        for idx in range(tmp_target_poses.shape[0]):
+                            env.exec_actions(
+                                actions=tmp_target_poses[idx],
+                                delta_actions=action[idx],
+                                timestamps=action_timestamps[idx],
+                            )
+                            precise_wait(action_timestamps[idx], time_func=time.time)
                         if verbose:
                             print(f"Submitted action shape: {this_target_poses.shape}")
                             print(f"Submitted action: {this_target_poses}")
