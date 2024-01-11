@@ -354,8 +354,12 @@ class RealEnv:
         new_stages = stages[is_new]
 
         for i in range(len(new_actions)):
-            self.robot.servoL(pose=new_actions[i][:-1], duration=0.25 / self.frequency)   # duration = SpaceMouseDeadzone / RealEnvFrequency
-            self.gripper.execute(pose=[new_actions[i][-1]], duration=0.25 / self.frequency)
+            self.robot.servoL(
+                pose=new_actions[i][:-1], duration=1 / self.frequency
+            )  # duration = SpaceMouseDeadzone / RealEnvFrequency
+            self.gripper.execute(
+                pose=[new_actions[i][-1]], duration=1 / self.frequency
+            )
 
         # record actions
         if self.action_accumulator is not None:
@@ -427,6 +431,7 @@ class RealEnv:
             delta_actions = self.delta_action_accumulator.actions
             action_timestamps = self.action_accumulator.timestamps
             stages = self.stage_accumulator.actions
+            # TODO: check here, obs_timestamps
             n_steps = min(len(obs_timestamps), len(action_timestamps))
             if n_steps > 0:
                 episode = dict()
@@ -444,6 +449,7 @@ class RealEnv:
             self.action_accumulator = None
             self.delta_action_accumulator = None
             self.stage_accumulator = None
+        self.realsense.stop_recording()
 
     def drop_episode(self):
         self.end_episode()

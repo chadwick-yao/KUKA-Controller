@@ -4,3 +4,4 @@ __pycache__
 maze_car.ttt
 /data
 *.mp4
+*.lprof
