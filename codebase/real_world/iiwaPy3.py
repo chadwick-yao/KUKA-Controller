@@ -48,7 +48,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
         host: str = "172.31.1.147",
         port: int = 30001,
         trans: Tuple = (0, 0, 0, 0, 0, 0),
-        frequency: int = 150,
+        frequency: int = 100,
         max_pos_speed: float = 32,
         max_rot_speed: float = 0.5,
         launch_timeout: int = 3,
@@ -170,11 +170,11 @@ class IIWAPositionalController(BaseClient, mp.Process):
         self.stop()
 
     # ========= command methods ============
-    def servoL(self, pose, duration=0.05):
+    def servoL(self, pose, duration=0.1):
         """
         duration: desired time to reach pose
         """
-        assert self.is_alive()
+        # assert self.is_alive()
         assert duration >= (1 / self.frequency)
         pose = np.array(pose)
         assert pose.shape == (6,) or pose.shape == (7,)

@@ -19,6 +19,7 @@ Press "Backspace" to delete the previously recorded episode.
 import time
 import click
 import cv2
+import tqdm
 import numpy as np
 import copy
 from termcolor import colored, cprint
@@ -72,7 +73,7 @@ from utils.data_utils import pose_euler2quat
 @click.option(
     "--time_limit_mode",
     "-tlm",
-    default=15,
+    default=12,
     type=int,
     help="Record a limited period of time.",
 )
@@ -111,7 +112,7 @@ def main(
             video_crf=21,
             shm_manager=shm_manager,
             max_pos_speed=128,
-            max_rot_speed=0.5,
+            max_rot_speed=0.75,
         ) as env:
             cv2.setNumThreads(1)
 
@@ -188,6 +189,13 @@ def main(
                     elif key_stroke == KeyCode(char="r"):
                         env.robot.reset_robot()
                         target_pose = copy.deepcopy(env.robot.init_eef_pose)
+
+                        target_pose[:3] += np.clip(
+                            np.random.normal(0, 5, size=3), -5, 5
+                        )
+                        target_pose[3:] += np.clip(
+                            np.random.normal(0, 1, size=3), -0.05, 0.05
+                        )
                     elif key_stroke == Key.backspace:
                         # Delete the most recent recorded episode
                         if click.confirm("Are you sure to drop an episode?"):
@@ -196,6 +204,10 @@ def main(
                             is_recording = False
 
                 stage = key_counter[Key.space]
+
+                # set target_pose with latest value
+                # target_pose[:3] = obs["robot_eef_pos"][-1]
+                # target_pose[3:] = obs["robot_eef_rot"][-1]
 
                 # visualize
                 vis_img = obs[f"camera_{vis_camera_idx}"][-1, :, :, ::-1].copy()
@@ -231,11 +243,18 @@ def main(
 
                 # ------------- Button Features -------------
                 current_button = [sm.is_button_pressed(0), sm.is_button_pressed(1)]
-                # if not current_button[0]:
-                #     # translation mode
-                #     drot_xyz[:] = 0
-                # else:
-                #     dpos[:] = 0
+                if not is_recording and current_button[0]:
+                    # Start recording
+                    env.start_episode(
+                        t_start + (iter_idx + 2) * dt - time.monotonic() + time.time()
+                    )
+                    key_counter.clear()
+                    is_recording = True
+                    cprint("Recording!", on_color="on_green")
+
+                    timer.start()
+                    cprint("Timer start!", on_color="on_blue")
+
                 if current_button[1] and not last_button[1]:
                     G_target_pose = 1 ^ G_target_pose
                 last_button = current_button

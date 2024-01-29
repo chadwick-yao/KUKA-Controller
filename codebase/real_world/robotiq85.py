@@ -131,7 +131,7 @@ class Robotiq85(mp.Process):
         self.stop()
 
     def execute(self, pose, duration=0.1):
-        assert self.is_alive()
+        # assert self.is_alive()
         pose = np.array(pose)
         assert pose.shape == (1,)
 
@@ -458,17 +458,3 @@ class Robotiq85(mp.Process):
         return self.goto(-1.0, vel, force, block=block, timeout=timeout)
 
 
-# test
-if __name__ == "__main__":
-    shm_manager = SharedMemoryManager()
-    shm_manager.start()
-
-    with Robotiq85(
-        shm_manager=shm_manager, frequency=100, receive_keys=None
-    ) as gripper:
-        time.sleep(1)
-        for _ in range(3):
-            time.sleep(1)
-            gripper.execute(pose=[1])
-            time.sleep(1)
-            gripper.execute(pose=[0])

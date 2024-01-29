@@ -31,6 +31,7 @@ from utils.real_inference_utils import get_real_obs_dict, get_real_obs_resolutio
 from utils.data_utils import pose_euler2quat
 
 OmegaConf.register_new_resolver("eval", eval, replace=True)
+np.set_printoptions(suppress=True)
 """
 Usage:
 (robodiff)$ python eval_real_robot.py -i <ckpt_path> -o <save_dir> --robot_ip <ip_of_ur5>
@@ -58,14 +59,14 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/My Passport/diffusion_policy_data/12_28_pick/checkpoint/epoch=0500-val_loss=0.086.ckpt",
+    default="/media/shawn/My Passport1/diffusion_policy_data/12_19Lift/latest.ckpt",
     required=True,
     help="Path to checkpoint",
 )
 @click.option(
     "--output_path",
     "-op",
-    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_pick_12_28_1",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_pick_12_28_2",
     required=True,
     help="Directory to save recording",
 )
@@ -85,7 +86,7 @@ Press "S" to stop evaluation and gain control back.
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
 @click.option(
-    "--max_duration", "-md", default=20, help="Max duration for each epoch in seconds."
+    "--max_duration", "-md", default=5, help="Max duration for each epoch in seconds."
 )
 @click.option(
     "--steps_per_inference",
@@ -190,6 +191,8 @@ def main(
     print("action_offset:", action_offset)
 
     action_queue = ml.Queue()
+    eval_start_time = ml.Value("d", 0.0)
+    latest_act_time = ml.Value("d", 0.0)
 
     with SharedMemoryManager() as shm_manager:
         with Spacemouse(
@@ -217,6 +220,9 @@ def main(
             with ActionExecutor(
                 env=env,
                 action_queue=action_queue,
+                eval_start_time=eval_start_time,
+                latest_act_time=latest_act_time,
+                dt=dt,
             ) as act_exe:
                 cv2.setNumThreads(1)
 
@@ -378,6 +384,8 @@ def main(
                         policy.reset()
                         start_delay = 1.0
                         eval_t_start = time.time() + start_delay
+                        eval_start_time.value = eval_t_start
+
                         t_start = time.monotonic() + start_delay
                         env.start_episode(eval_t_start)
                         # wait for 1/30 sec to get the closest frame actually
@@ -399,7 +407,7 @@ def main(
                             # cprint("Get Obs!", color="blue")
                             obs = env.get_obs()
                             obs_timestamps = obs["timestamp"]
-                            print(f"Obs latency {time.time() - obs_timestamps[-1]}")
+                            # print(f"Obs latency {time.time() - obs_timestamps[-1]}")
 
                             # run inference
                             with torch.no_grad():
@@ -422,7 +430,7 @@ def main(
                                 action = (
                                     result["action"][0].detach().to("cpu").numpy()
                                 )  # 1 n_acts 7 -> n_acts 7
-                                print("Inference latency:", time.time() - s)
+                                # print("Inference latency:", time.time() - s)
 
                             # TODO: convert policy action to env actions
                             action = action[:steps_per_inference, :]
@@ -486,13 +494,20 @@ def main(
 
                             # deal with timing
                             # the same step actions are always the target for
+                            print(
+                                f"obs timestamps: {(obs_timestamps - eval_t_start) / dt}"
+                            )
                             action_timestamps = (
                                 np.arange(len(action), dtype=np.float64) + action_offset
                             ) * dt + obs_timestamps[-1]
+                            print(
+                                f"act timestamps: {(action_timestamps - eval_t_start) / dt}"
+                            )
+
                             action_exec_latency = 0.01
                             curr_time = time.time()
                             is_new = action_timestamps > (
-                                curr_time + action_exec_latency
+                                latest_act_time.value + action_exec_latency
                             )
                             if np.sum(is_new) == 0:
                                 # exceeded time budget, still do something
@@ -509,9 +524,8 @@ def main(
                                 this_target_poses = this_target_poses[is_new]
                                 action_timestamps = action_timestamps[is_new]
                                 action = action[is_new]
-                                
-                            cycle_end = action_timestamps[-3]
 
+                            cycle_end = action_timestamps[-3]
 
                             this_target_poses[:, 6] = np.clip(
                                 this_target_poses[:, 6], 0.0, 1.0
@@ -526,16 +540,21 @@ def main(
                                     this_target_poses[idx, :-1]
                                 )
 
-                            for idx in range(tmp_target_poses.shape[0]):
-                                while not action_queue.empty():
-                                    action_queue.get()
+                            while not action_queue.empty():
+                                action_queue.get()
+                            cprint("Queue cleared!", on_color="on_red")
 
+                            for idx in range(tmp_target_poses.shape[0]):
                                 action_queue.put(
                                     {
                                         "target_pose": tmp_target_poses[idx],
                                         "action": action[idx],
                                         "timestamp": action_timestamps[idx],
                                     }
+                                )
+                                cprint(
+                                    f"Queue size: {action_queue.qsize()}, Latest action: {action[idx]}, Latest timestamp: {(action_timestamps[idx] - eval_t_start) / dt}",
+                                    on_color="on_green",
                                 )
 
                             if verbose:
@@ -568,6 +587,8 @@ def main(
                             if key_stroke == ord("s"):
                                 # Stop episode
                                 # Hand control back to human
+                                while not action_queue.empty():
+                                    action_queue.get()
                                 env.end_episode()
                                 print("Stopped.")
                                 break
@@ -579,12 +600,14 @@ def main(
                                 print("Terminated by the timeout!")
 
                             if terminate:
+                                while not action_queue.empty():
+                                    action_queue.get()
                                 env.end_episode()
                                 break
 
                             # wait for execution
-                            # precise_wait(t_cycle_end - frame_latency)
-                            precise_wait(cycle_end - frame_latency, time_func=time.time)
+                            precise_wait(t_cycle_end - frame_latency)
+                            # precise_wait(cycle_end - frame_latency, time_func=time.time)
                             iter_idx += steps_per_inference
                             if verbose:
                                 print(
@@ -593,6 +616,8 @@ def main(
 
                     except KeyboardInterrupt:
                         print("Interrupted!")
+                        while not action_queue.empty():
+                            action_queue.get()
                         # stop robot.
                         env.end_episode()
 
@@ -600,10 +625,20 @@ def main(
 
 
 class ActionExecutor(ml.Process):
-    def __init__(self, action_queue: ml.Queue, env: RealEnv):
+    def __init__(
+        self,
+        action_queue: ml.Queue,
+        env: RealEnv,
+        eval_start_time: ml.Value,
+        latest_act_time: ml.Value,
+        dt: float,
+    ):
         super().__init__()
         self.env = env
         self.action_queue = action_queue
+        self.eval_start_time = eval_start_time
+        self.latest_act_time = latest_act_time
+        self.dt = dt
 
         self.stop_event = ml.Event()
 
@@ -611,12 +646,16 @@ class ActionExecutor(ml.Process):
         while not self.stop_event.is_set():
             if not self.action_queue.empty():
                 action_dict = self.action_queue.get()
+                cprint(
+                    f"Queue size: {self.action_queue.qsize()}, Exec action: {action_dict['action']}, timestamp: {(action_dict['timestamp'] - self.eval_start_time.value) / self.dt}",
+                    on_color="on_yellow",
+                )
                 self.env.exec_actions(
                     actions=action_dict["target_pose"],
                     delta_actions=action_dict["action"],
                     timestamps=action_dict["timestamp"],
                 )
-
+                self.latest_act_time.value = action_dict["timestamp"]
                 precise_wait(action_dict["timestamp"], time_func=time.time)
 
     def __enter__(self):
