@@ -1,14 +1,15 @@
-from typing import Dict, Tuple
+from typing import Dict, Tuple, List
 import math
-import logging
+import copy
 import torch
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange, reduce
 
 from codebase.diffusion_policy.model.common.normalizer import LinearNormalizer
 from codebase.diffusion_policy.model.ACT.detr_vae import DETRVAE, build
-from codebase.diffusion_policy.common.pytorch_util import dict_apply
+from codebase.diffusion_policy.common.pytorch_util import dict_apply, replace_submodules
 from codebase.diffusion_policy.policy.base_image_policy import BaseImagePolicy
 from codebase.diffusion_policy.model.ACT.backbone import Joiner
 from codebase.diffusion_policy.model.ACT.transformer import (
@@ -16,7 +17,16 @@ from codebase.diffusion_policy.model.ACT.transformer import (
     TransformerEncoder,
     TransformerEncoderLayer,
 )
+from codebase.diffusion_policy.model.diffusion.mask_generator import LowdimMaskGenerator
+from codebase.diffusion_policy.common.robomimic_config_util import get_robomimic_config
 
+from robomimic.algo import algo_factory
+from robomimic.algo.algo import PolicyAlgo
+import robomimic.utils.obs_utils as ObsUtils
+import robomimic.models.base_nets as rmbn
+import codebase.diffusion_policy.model.vision.crop_randomizer as dmvc
+
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -25,17 +35,26 @@ logger = logging.getLogger(__name__)
 class ActionChunkTransformerPolicy(BaseImagePolicy):
     def __init__(
         self,
-        # DETR arch
+        # backbone
         joiner: Joiner,
-        transformer: Transformer,
+        use_dp_vis: bool,
+        # DETR arch
+        num_encoder_layers: int,
         trans_encoder_layer: TransformerEncoderLayer,
-        state_dim,
-        num_queries,
-        camera_names,
-        num_encoder_layers,
-        kl_weight,
-        temporal_agg,
-        shape_meta,
+        transformer: Transformer,
+        # hyper params
+        num_queries: int,
+        kl_weight: float,
+        latent_dim: int,
+        hidden_dim: int,
+        ## obs encoder params
+        shape_meta: Dict,
+        n_action_steps: int,
+        n_obs_steps: int,
+        crop_shape: tuple = (76, 76),
+        obs_encoder_group_norm: bool = False,
+        eval_fixed_crop: bool = False,
+        temporal_agg: bool = False,
         **kwargs,
     ):
         super().__init__()
@@ -74,17 +93,87 @@ class ActionChunkTransformerPolicy(BaseImagePolicy):
             else:
                 raise RuntimeError(f"Unsupported obs type {obs_type}.")
 
-        model = DETRVAE(
-            backbones=backbones,
-            transformer=transformer,
-            encoder=transformerEncoder,
-            state_dim=state_dim,
-            num_queries=num_queries,
-            camera_names=camera_names,
+        # get raw robomimic config
+        config = get_robomimic_config(
+            algo_name="bc_rnn", hdf5_type="image", task_name="square", dataset_type="ph"
         )
 
-        self.model: DETRVAE
-        self.model = model
+        with config.unlocked():
+            # set config with shape_meta
+            obs_config_only_rgb = copy.deepcopy(obs_config)
+            for key in obs_config.keys():
+                if key != "rgb":
+                    obs_config_only_rgb[key] = []
+            config.observation.modalities.obs = obs_config_only_rgb
+
+            if crop_shape is None:
+                for key, modality in config.observation.encoder.items():
+                    if modality.obs_randomizer_class == "CropRandomizer":
+                        modality["obs_randomizer_class"] = None
+            else:
+                # set random crop parameter
+                ch, cw = crop_shape
+                for key, modality in config.observation.encoder.items():
+                    if modality.obs_randomizer_class == "CropRandomizer":
+                        modality.obs_randomizer_kwargs.crop_height = ch
+                        modality.obs_randomizer_kwargs.crop_width = cw
+
+        # init global state
+        ObsUtils.initialize_obs_utils_with_config(config)
+
+        # load model
+        policy: PolicyAlgo = algo_factory(
+            algo_name=config.algo_name,
+            config=config,
+            obs_key_shapes=obs_key_shapes,
+            ac_dim=action_dim,
+            device="cpu",
+        )
+
+        obs_encoder = policy.nets["policy"].nets["encoder"].nets["obs"]
+
+        if obs_encoder_group_norm:
+            # replace batch norm with group norm
+            replace_submodules(
+                root_module=obs_encoder,
+                predicate=lambda x: isinstance(x, nn.BatchNorm2d),
+                func=lambda x: nn.GroupNorm(
+                    num_groups=x.num_features // 16, num_channels=x.num_features
+                ),
+            )
+            # obs_encoder.obs_nets['agentview_image'].nets[0].nets
+
+        # obs_encoder.obs_randomizers['agentview_image']
+        if eval_fixed_crop:
+            replace_submodules(
+                root_module=obs_encoder,
+                predicate=lambda x: isinstance(x, rmbn.CropRandomizer),
+                func=lambda x: dmvc.CropRandomizer(
+                    input_shape=x.input_shape,
+                    crop_height=x.crop_height,
+                    crop_width=x.crop_width,
+                    num_crops=x.num_crops,
+                    pos_enc=x.pos_enc,
+                ),
+            )
+        obs_feature_dim = obs_encoder.output_shape()[0]
+        cond_dim = obs_feature_dim
+
+        model = DETRVAE(
+            backbones=None if use_dp_vis else backbones,
+            transformer=transformer,
+            encoder=transformerEncoder,
+            num_queries=num_queries,
+            cond_dim=cond_dim,
+            low_dim=sum([obs_key_shapes[key][0] for key in obs_config["low_dim"]]),
+            hidden_dim=hidden_dim,
+            action_dim=action_dim,
+            n_obs_steps=n_obs_steps,
+            latent_dim=latent_dim,
+        )
+
+        self.obs_encoder = obs_encoder if use_dp_vis else None
+        self.model: DETRVAE = model
         self.obs_config = obs_config
         self.kl_weight = kl_weight
         self.num_queries = num_queries
@@ -92,95 +181,111 @@ class ActionChunkTransformerPolicy(BaseImagePolicy):
         self.temporal_agg = temporal_agg
         self.normalizer = LinearNormalizer()
         self.query_frequency = 1 if self.temporal_agg else self.num_queries
+        self.n_action_steps = n_action_steps
+        self.n_obs_steps = n_obs_steps
+        self.use_dp_vis = use_dp_vis
 
-        logger.info("Loading policy successfully!")
+        if use_dp_vis:
+            logger.info(
+                "number of obs encoder parameters: %e",
+                sum(p.numel() for p in self.obs_encoder.parameters()),
+            )
+        else:
+            logger.info(
+                "number of obs encoder parameters: %e",
+                sum(p.numel() for p in self.model.backbones.parameters()),
+            )
 
         logger.info(
-            "number of parameters: %e", sum(p.numel() for p in self.parameters())
+            "number of cvae encoder parameters: %e",
+            sum(p.numel() for p in self.model.encoder.parameters()),
+        )
+
+        logger.info(
+            "number of cvae decoder parameters: %e",
+            sum(p.numel() for p in self.model.transformer.parameters()),
         )
 
     def predict_action(self, obs_dict):
-        env_state = None
         nobs = self.normalizer.normalize(obs_dict)
-        # do preprocessing
-        if "camera_0" in nobs.keys():
-            agent_view_img = nobs["camera_0"][:, 0]  # [bs, c, h, w]
-            hand_img = nobs["camera_1"][:, 0]  # [bs, c, h ,w]
-            image_data = torch.cat(
-                (agent_view_img.unsqueeze(1), hand_img.unsqueeze(1)), dim=1
-            )  # [bs, 2, c, h ,w]
-        elif "camera_0" in nobs.keys():
-            side_view_img = nobs["camera_0"][:, 0]  # [bs, c, h, w]
-            hand_img = nobs["camera_1"][:, 0]  # [bs, c, h ,w]
-            image_data = torch.cat(
-                (side_view_img.unsqueeze(1), hand_img.unsqueeze(1)), dim=1
-            )  # [bs, 2, c, h ,w]
+
+        To = self.n_obs_steps
+        Ta = self.n_action_steps
+        value = next(iter(nobs.values()))
+        B = value.shape[0]
+
+        this_nobs = dict_apply(nobs, lambda x: x[:, :To, ...].reshape(-1, *x.shape[2:]))
+
+        # img
+        if self.use_dp_vis:
+            img_data = dict()
+            for item in self.obs_config["rgb"]:
+                img_data[item] = this_nobs[item]
+
+            # extract img features
+            nobs_features = self.obs_encoder(img_data)
+            img_data = nobs_features.reshape(B, To, -1)
         else:
-            raise NotImplementedError
+            img_data = list()
+            for item in self.obs_config["rgb"]:
+                img_data.append(this_nobs[item])
+            img_data = torch.stack(img_data, dim=1)  # bs*To, 2, ...
+        # low
+        low_data = list()
+        for item in self.obs_config["low_dim"]:
+            low_data.append(this_nobs[item])
 
-        robot0_eef_pos = nobs["robot_eef_pos"][:, 0]  # [bs, 3]
-        robot0_eef_quat = nobs["robot_eef_rot"][:, 0]  # [bs, 4]
-        robot0_gripper_qpos = nobs["gripper_pose"][:, 0]  # [bs, 2]
-        qpos_data = torch.cat(
-            (robot0_eef_pos, robot0_eef_quat, robot0_gripper_qpos), dim=1
-        )  # [bs, 9]
+        low_data = torch.cat(low_data, dim=1)  # bs*To, 9
+        low_data = low_data.reshape(B, To, -1)  # bs, To, 9
 
-        a_hat, _, (_, _) = self.model(qpos_data, image_data, env_state)
+        a_hat, _, (_, _) = self.model(low_data, img_data)
         action_pred = self.normalizer["action"].unnormalize(a_hat)
+        start = To - 1
+        end = start + Ta
+        action = action_pred[:, start:end]
 
         result = {
-            "action": action_pred,
+            "action": action,
             "action_pred": action_pred,
         }
         return result
 
     def compute_loss(self, batch):
-        """
-        In ACT, its __getitem__ gets    image_data [k, c h, w],
-                                        qpos_data [14],
-                                        action_data [episode_len, 14],
-                                        is_pad [episode_len]
-                                    do preprocessing at last
-        """
-        env_state = None
         nobs = self.normalizer.normalize(batch["obs"])
-        nactions = self.normalizer["action"].normalize(
-            batch["action"]
-        )  # [bs, horizon, 7]
-
-        # do preprocessing
-        if "camera_0" in nobs.keys():
-            agent_view_img = nobs["camera_0"][:, 0]  # [bs, c, h, w]
-            hand_img = nobs["camera_1"][:, 0]  # [bs, c, h ,w]
-            image_data = torch.cat(
-                (agent_view_img.unsqueeze(1), hand_img.unsqueeze(1)), dim=1
-            )  # [bs, 2, c, h ,w]
-        elif "camera_0" in nobs.keys():
-            side_view_img = nobs["camera_0"][:, 0]  # [bs, c, h, w]
-            hand_img = nobs["camera_1"][:, 0]  # [bs, c, h ,w]
-            image_data = torch.cat(
-                (side_view_img.unsqueeze(1), hand_img.unsqueeze(1)), dim=1
-            )  # [bs, 2, c, h ,w]
-        else:
-            raise NotImplementedError
-
-        robot0_eef_pos = nobs["robot_eef_pos"][:, 0]  # [bs, 3]
-        robot0_eef_quat = nobs["robot_eef_rot"][:, 0]  # [bs, 4]
-        robot0_gripper_qpos = nobs["gripper_pose"][:, 0]  # [bs, 2]
-        qpos_data = torch.cat(
-            (robot0_eef_pos, robot0_eef_quat, robot0_gripper_qpos), dim=1
-        )  # [bs, 9]
+        nactions = self.normalizer["action"].normalize(batch["action"])
 
         batch_size = nactions.shape[0]
         horizon = nactions.shape[1]
-        To = 1
+        To = self.n_obs_steps
+
+        this_nobs = dict_apply(
+            nobs, lambda x: x[:, :To, ...].reshape(-1, *x.shape[2:])
+        )  # bs*To, ...
+        # img
+        # img_data = dict()
+        # for item in self.obs_config["rgb"]:
+        #     img_data[item] = this_nobs[item]
+
+        # # extract img features
+        # nobs_features = self.obs_encoder(img_data)
+        # img_cond = nobs_features.reshape(batch_size, To, -1)
+        img_data = list()
+        for item in self.obs_config["rgb"]:
+            img_data.append(this_nobs[item])
+        img_data = torch.stack(img_data, dim=1)  # bs*To, 2, ...
+        # low
+        low_data = list()
+        for item in self.obs_config["low_dim"]:
+            low_data.append(this_nobs[item])
+        low_data = torch.cat(low_data, dim=1)  # bs*To, 9
+        low_data = low_data.reshape(batch_size, To, -1)  # bs, To, 9
 
         is_pad = torch.zeros(nactions.shape[1]).bool()
         is_pad = is_pad.to(nactions.device)
         is_pad = torch.unsqueeze(is_pad, axis=0).repeat(batch_size, 1)
 
         a_hat, is_pad_hat, (mu, logvar) = self.model(
-            qpos_data, image_data, env_state, nactions, is_pad
+            low_data, img_data, nactions, is_pad
         )
         total_kld, dim_wise_kld, mean_kld = kl_divergence(mu, logvar)
 
@@ -190,7 +295,6 @@ class ActionChunkTransformerPolicy(BaseImagePolicy):
         loss_dict["l1"] = l1
         loss_dict["kl"] = total_kld[0]
         loss_dict["loss"] = loss_dict["l1"] + loss_dict["kl"] * self.kl_weight
-
         return loss_dict
 
     def set_normalizer(self, normalizer: LinearNormalizer):

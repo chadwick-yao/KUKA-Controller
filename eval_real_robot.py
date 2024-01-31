@@ -57,14 +57,14 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/My Passport/diffusion_policy_data/12_20pick/latest.ckpt",
+    default="/media/shawn/My Passport1/diffusion_policy_data/1.29pick/checkpoint/epoch=0200-val_loss=0.068.ckpt",
     required=True,
     help="Path to checkpoint",
 )
 @click.option(
     "--output_path",
     "-op",
-    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_pick_200",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_real_pick",
     required=True,
     help="Directory to save recording",
 )
@@ -91,7 +91,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--steps_per_inference",
     "-si",
-    default=6,
+    default=8,
     type=int,
     help="Action horizon for inference.",
 )
@@ -108,7 +108,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--match_dataset",
     "-m",
-    default=None,  # "/media/shawn/My Passport/diffusion_policy_data/12_20pick",
+    default="/media/shawn/My Passport1/diffusion_policy_data/1.29pick",
     help="Dataset used to overlay and adjust initial condition",
 )
 @click.option(
@@ -160,9 +160,22 @@ def main(
     ckpt_path = input_path
     payload = torch.load(open(ckpt_path, "rb"), pickle_module=dill)
     cfg = payload["cfg"]
-    cfg._target_ = "codebase.diffusion_policy.workspace.train_diffusion_transformer_hybrid_workspace.TrainDiffusionTransformerHybridWorkspace"
-    cfg.policy._target_ = "codebase.diffusion_policy.policy.diffusion_transformer_hybrid_image_policy.DiffusionTransformerHybridImagePolicy"
-    cfg.ema._target_ = "codebase.diffusion_policy.model.diffusion.ema_model.EMAModel"
+    cfg._target_ = "codebase." + cfg._target_
+    cfg.policy._target_ = "codebase." + cfg.policy._target_
+    cfg.ema._target_ = "codebase." + cfg.ema._target_
+
+    # ACT
+    cfg.policy.joiner._target_ = "codebase." + cfg.policy.joiner._target_
+    cfg.policy.joiner.backbone._target_ = (
+        "codebase." + cfg.policy.joiner.backbone._target_
+    )
+    cfg.policy.joiner.position_embedding._target_ = (
+        "codebase." + cfg.policy.joiner.position_embedding._target_
+    )
+    cfg.policy.trans_encoder_layer._target_ = (
+        "codebase." + cfg.policy.trans_encoder_layer._target_
+    )
+    cfg.policy.transformer._target_ = "codebase." + cfg.policy.transformer._target_
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace: BaseWorkspace = cls(cfg)
@@ -179,7 +192,8 @@ def main(
 
     ## set inference params
     policy.num_inference_steps = 16  # DDIM inference iterations
-    policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
+    # policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
+    policy.n_action_steps = policy.num_queries - policy.n_obs_steps + 1
 
     # setup robot
     dt = 1 / frequency
@@ -206,12 +220,12 @@ def main(
             enable_multi_cam_vis=True,
             record_raw_video=True,
             # number of threads per camera view for video recording (H.264)
-            thread_per_video=3,
+            thread_per_video=4,
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
             max_pos_speed=128,
-            max_rot_speed=0.5,
+            max_rot_speed=0.75,
         ) as env:
             cv2.setNumThreads(1)
 

@@ -3,8 +3,6 @@
 Backbone modules.
 """
 from collections import OrderedDict
-import sys
-sys.path.append("/home/shawn/Documents/act/detr")
 import torch
 import torch.nn.functional as F
 import torchvision

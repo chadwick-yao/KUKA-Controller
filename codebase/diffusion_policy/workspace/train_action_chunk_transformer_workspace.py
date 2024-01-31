@@ -265,6 +265,28 @@ class TrainActionChunkTransformerWorkspace(BaseWorkspace):
                         del pred_action
                         del mse
 
+                # val_action_mse_error
+                if (self.epoch % cfg.training.val_every) == 0:
+                    with torch.no_grad():
+                        # sample trajectory from validation set, and evaluate difference
+                        batch = next(iter(val_dataloader))
+                        batch = dict_apply(
+                            batch, lambda x: x.to(device, non_blocking=True)
+                        )
+                        obs_dict = batch["obs"]
+                        gt_action = batch["action"]
+
+                        result = policy.predict_action(obs_dict)
+                        pred_action = result["action_pred"]
+                        mse = torch.nn.functional.mse_loss(pred_action, gt_action)
+                        step_log["val_action_mse_error"] = mse.item()
+                        del batch
+                        del obs_dict
+                        del gt_action
+                        del result
+                        del pred_action
+                        del mse
+
                 # checkpoint
                 if (self.epoch % cfg.training.checkpoint_every) == 0:
                     # checkpointing
@@ -304,14 +326,7 @@ class TrainActionChunkTransformerWorkspace(BaseWorkspace):
 )
 def main(cfg):
     workspace = TrainActionChunkTransformerWorkspace(cfg)
-    from line_profiler import LineProfiler
-
-    profiler = LineProfiler()
-    profiler.add_function(workspace.model.model.forward)
-    profiler.runctx("workspace.run()", globals(), locals())
-    profiler.print_stats()
-
-    # workspace.run()
+    workspace.run()
 
 
 if __name__ == "__main__":

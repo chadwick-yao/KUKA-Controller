@@ -18,7 +18,7 @@ import numpy as np
 
 from filelock import FileLock
 from typing import Optional, Union, Dict, List, Tuple
-from omegaconf import OmegaConf
+from omegaconf import OmegaConf, DictConfig
 from threadpoolctl import threadpool_limits
 
 from codebase.diffusion_policy.common.pytorch_util import dict_apply
@@ -56,11 +56,11 @@ class RealLiftImageDataset(BaseImageDataset):
         seed: int = 42,
         val_ratio: float = 0.0,
         max_train_episodes: Optional[int] = None,
+        delta_action: bool = False,
     ):
         assert os.path.isdir(dataset_path), f"{dataset_path} does not exist!"
 
         replay_buffer = None
-
         if use_cache:
             # fingerprint shape_meta
             shape_meta_json = json.dumps(
@@ -70,7 +70,6 @@ class RealLiftImageDataset(BaseImageDataset):
             cache_zarr_path = os.path.join(dataset_path, shape_meta_hash + ".zarr.zip")
             cache_lock_path = cache_zarr_path + ".lock"
             print("Acquiring lock on cache.")
-
             with FileLock(cache_lock_path):
                 if not os.path.exists(cache_zarr_path):
                     # cache does not exists
@@ -100,6 +99,23 @@ class RealLiftImageDataset(BaseImageDataset):
                 shape_meta=shape_meta,
                 store=zarr.MemoryStore(),
             )
+        if delta_action:
+            # replace action as relative to previous frame
+            actions = replay_buffer["action"][:]
+            # support positions only at this time
+            assert actions.shape[1] <= 3
+            actions_diff = np.zeros_like(actions)
+            episode_ends = replay_buffer.episode_ends[:]
+            for i in range(len(episode_ends)):
+                start = 0
+                if i > 0:
+                    start = episode_ends[i - 1]
+                end = episode_ends[i]
+                # delta action is the difference between previous desired position and the current
+                # it should be scheduled at the previous timestep for the current timestep
+                # to ensure consistency with positional mode
+                actions_diff[start + 1 : end] = np.diff(actions[start:end], axis=0)
+            replay_buffer["action"][:] = actions_diff
 
         rgb_keys = list()
         lowdim_keys = list()
@@ -145,6 +161,7 @@ class RealLiftImageDataset(BaseImageDataset):
         self.n_latency_steps = n_latency_steps
         self.pad_before = pad_before
         self.pad_after = pad_after
+        self.key_first_k = key_first_k
 
     def get_validation_dataset(self):
         val_set = copy.copy(self)
@@ -154,6 +171,7 @@ class RealLiftImageDataset(BaseImageDataset):
             pad_before=self.pad_before,
             pad_after=self.pad_after,
             episode_mask=self.val_mask,
+            # key_first_k=self.key_first_k,
         )
         val_set.val_mask = ~self.val_mask
         return val_set
@@ -192,7 +210,6 @@ class RealLiftImageDataset(BaseImageDataset):
         # when self.n_obs_steps is None
         # this slice does nothing (takes all)
         T_slice = slice(self.n_obs_steps)
-
         obs_dict = dict()
         for key in self.rgb_keys:
             # move channel last to channel first
@@ -253,7 +270,12 @@ def _get_replay_buffer(dataset_path, shape_meta, store):
             lowdim_keys=lowdim_keys + ["action"],
             image_keys=rgb_keys,
         )
-
+    for k in lowdim_keys:
+        if len(replay_buffer.root["data"][k].shape) == 1:
+            replay_buffer.root["data"][k] = replay_buffer.root["data"][k][:].reshape(
+                -1, 1
+            )
+    print(replay_buffer.root.tree())
     return replay_buffer
 
 
