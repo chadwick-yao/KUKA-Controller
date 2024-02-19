@@ -57,14 +57,14 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--input_path",
     "-ip",
-    default="/media/shawn/My Passport1/diffusion_policy_data/1.29pick/checkpoint/epoch=0200-val_loss=0.068.ckpt",
+    default="/media/shawn/My Passport1/diffusion_policy_data/2.2pick/checkpoint/epoch=0500-val_loss=0.094.ckpt",
     required=True,
     help="Path to checkpoint",
 )
 @click.option(
     "--output_path",
     "-op",
-    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_real_pick",
+    default="/home/shawn/Documents/pyspacemouse-coppeliasim/data/eval_real_pick_1",
     required=True,
     help="Directory to save recording",
 )
@@ -76,7 +76,7 @@ Press "S" to stop evaluation and gain control back.
     help="Robot's IP address. e.g. 172.31.1.147",
 )
 @click.option(
-    "--frequency", "-f", default=10, type=int, help="Control frequency in Hz."
+    "--frequency", "-f", default=30, type=int, help="Control frequency in Hz."
 )
 @click.option(
     "--command_latency",
@@ -86,7 +86,7 @@ Press "S" to stop evaluation and gain control back.
     help="Latency between receiving SapceMouse command to executing on Robot in Sec.",
 )
 @click.option(
-    "--max_duration", "-md", default=20, help="Max duration for each epoch in seconds."
+    "--max_duration", "-md", default=40, help="Max duration for each epoch in seconds."
 )
 @click.option(
     "--steps_per_inference",
@@ -108,7 +108,7 @@ Press "S" to stop evaluation and gain control back.
 @click.option(
     "--match_dataset",
     "-m",
-    default="/media/shawn/My Passport1/diffusion_policy_data/1.29pick",
+    default="/media/shawn/My Passport1/diffusion_policy_data/2.2pick",
     help="Dataset used to overlay and adjust initial condition",
 )
 @click.option(
@@ -224,7 +224,7 @@ def main(
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
-            max_pos_speed=128,
+            max_pos_speed=192,
             max_rot_speed=0.75,
         ) as env:
             cv2.setNumThreads(1)
@@ -519,11 +519,15 @@ def main(
                         #     delta_actions=action,
                         #     timestamps=action_timestamps,
                         # )
+                        print(f"OBS TIME: {(obs_timestamps - eval_t_start) / dt}")
                         for idx in range(tmp_target_poses.shape[0]):
                             env.exec_actions(
                                 actions=tmp_target_poses[idx],
                                 delta_actions=action[idx],
                                 timestamps=action_timestamps[idx],
+                            )
+                            print(
+                                f"ACTION: {action[idx]}, TIME: {(action_timestamps[idx] - eval_t_start) / dt}"
                             )
                             precise_wait(action_timestamps[idx], time_func=time.time)
                         if verbose:
@@ -558,48 +562,9 @@ def main(
                             print("Stopped.")
                             break
 
-                        # auto termination
-                        terminate = False
-                        if time.monotonic() - t_start > max_duration:
-                            terminate = True
-                            print("Terminated by the timeout!")
-
-                        term_pose = np.array(
-                            [
-                                3.40948500e-01,
-                                2.17721816e-01,
-                                4.59076878e-02,
-                                2.22014183e00,
-                                -2.22184883e00,
-                                -4.07186655e-04,
-                            ]
-                        )
-                        curr_pose = np.concatenate(
-                            (obs["robot_eef_pos"][-1], obs["robot_eef_rot"][-1])
-                        )
-                        dist = np.linalg.norm((curr_pose - term_pose)[:2], axis=-1)
-                        if dist < 0.03:
-                            # in termination area
-                            curr_timestamp = obs["timestamp"][-1]
-                            if term_area_start_timestamp > curr_timestamp:
-                                term_area_start_timestamp = curr_timestamp
-                            else:
-                                term_area_time = (
-                                    curr_timestamp - term_area_start_timestamp
-                                )
-                                if term_area_time > 0.5:
-                                    terminate = True
-                                    print("Terminated by the policy!")
-                        else:
-                            # out of the area
-                            term_area_start_timestamp = float("inf")
-
-                        if terminate:
-                            env.end_episode()
-                            break
-
                         # wait for execution
-                        precise_wait(t_cycle_end - frame_latency)
+                        # precise_wait(t_cycle_end - frame_latency)
+
                         iter_idx += steps_per_inference
                         if verbose:
                             print(

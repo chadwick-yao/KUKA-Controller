@@ -181,7 +181,7 @@ class PoseTrajectoryInterpolator:
         # determine speed
         duration = time - end_time
         end_pose = trimmed_interp(end_time)
-        pos_dist, rot_dist = pose_distance(pose, end_pose)
+        pos_dist, rot_dist = pose_distance(pose, end_pose, self.use_quat)
         pos_min_duration = pos_dist / max_pos_speed
         rot_min_duration = rot_dist / max_rot_speed
         duration = max(duration, max(pos_min_duration, rot_min_duration))

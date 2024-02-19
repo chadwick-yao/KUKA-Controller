@@ -25,14 +25,15 @@ from codebase.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuf
 class Command(enum.Enum):
     STOP = 0
     ACTIVATE = 1
+    WAYPOINT = 2
 
 
 class Robotiq85(mp.Process):
     def __init__(
         self,
         shm_manager: SharedMemoryManager,
-        frequency: int,
         receive_keys: Optional[List],
+        frequency: int = 100,
         launch_timeout: int = 3,
         soft_real_time: bool = False,
         get_max_k: int = 128,
@@ -62,6 +63,7 @@ class Robotiq85(mp.Process):
             "cmd": Command.ACTIVATE.value,
             "target_pose": np.zeros((1,), dtype=np.float64),
             "duration": 0.0,
+            "target_time": 0.0,
         }
 
         input_queue = SharedMemoryQueue.create_from_examples(
@@ -142,6 +144,18 @@ class Robotiq85(mp.Process):
         }
         self.input_queue.put(message)
 
+    def schedule_waypoint(self, pose, target_time):
+        assert target_time > time.time()
+        pose = np.array(pose)
+        assert pose.shape == (1,)
+
+        message = {
+            "cmd": Command.WAYPOINT.value,
+            "target_pose": pose,
+            "target_time": target_time,
+        }
+        self.input_queue.put(message)
+
     def get_state(self, k=None, out=None):
         if k is None:
             return self.ring_buffer.get(out=out)
@@ -172,6 +186,7 @@ class Robotiq85(mp.Process):
                 t_start = time.perf_counter()
 
                 t_now = time.monotonic()
+                last_waypoint_time = t_now
                 # update robot state
                 state = dict()
                 if np.around(target_pose):  # close only when it's open
@@ -210,11 +225,19 @@ class Robotiq85(mp.Process):
                         curr_time = t_now + dt
                         t_insert = curr_time + duration
 
+                        last_waypoint_time = t_insert
                         if self.verbose:
                             cprint(
                                 f"[ROBOTIQ85Controller] New pose target: {target_pose}",
                                 "red",
                             )
+                    elif cmd == Command.WAYPOINT.value:
+                        target_pose = command["target_pose"]
+                        target_time = float(command["target_time"])
+                        # translate global time to monotonic time
+                        target_time = time.monotonic() - time.time() + target_time
+                        curr_time = t_now + dt
+                        last_waypoint_time = target_time
                     else:
                         keep_running = False
                         break

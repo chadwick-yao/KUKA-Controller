@@ -195,7 +195,7 @@ class IIWAPositionalController(BaseClient, mp.Process):
     def schedule_waypoint(self, pose, target_time):
         assert target_time > time.time()
         pose = np.array(pose)
-        assert pose.shape == (6,)
+        assert pose.shape == (6,) or pose.shape == (7,)
 
         message = {
             "cmd": Command.SCHEDULE_WAYPOINT.value,
@@ -405,7 +405,16 @@ class IIWAPositionalController(BaseClient, mp.Process):
             raise RuntimeError("Could not mount the specified TCP")
 
     def reset_initial_state(self):
-        init_jpos = [0, np.pi * 30 / 180, 0, -np.pi * 80 / 180, 0, np.pi * 70 / 180, 0]
+        # init_jpos = [0, np.pi * 30 / 180, 0, -np.pi * 80 / 180, 0, np.pi * 70 / 180, 0]
+        init_jpos = [
+            -np.pi * 7 / 180,
+            np.pi * 30 / 180,
+            np.pi * 0 / 180,
+            -np.pi * 83 / 180,
+            np.pi * 0 / 180,
+            np.pi * 67 / 180,
+            -np.pi * 5 / 180,
+        ]
         # joint_deviations = np.random.uniform(
         #     low=-1.0 * 3.14 / 180, high=1.0 * 3.14 / 180, size=7
         # )

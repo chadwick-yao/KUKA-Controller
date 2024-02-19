@@ -163,11 +163,12 @@ class RealEnv:
             receive_keys=None,
             max_pos_speed=max_pos_speed,
             max_rot_speed=max_rot_speed,
+            frequency=100,
         )
         gripper = Robotiq85(
             shm_manager=shm_manager,
-            frequency=100,
             receive_keys=None,
+            frequency=100,
         )
 
         self.realsense = realsense
@@ -354,10 +355,16 @@ class RealEnv:
         new_stages = stages[is_new]
 
         for i in range(len(new_actions)):
-            self.robot.servoL(
-                pose=new_actions[i][:-1], duration=1 / self.frequency
-            )  # duration = SpaceMouseDeadzone / RealEnvFrequency
-            self.gripper.execute(pose=[new_actions[i][-1]], duration=1 / self.frequency)
+            # self.robot.servoL(pose=new_actions[i][:-1], duration=1 / self.frequency)
+            self.robot.schedule_waypoint(
+                pose=new_actions[i][:-1],
+                target_time=new_timestamps[i],
+            )
+            # self.gripper.execute(pose=[new_actions[i][-1]], duration=1 / self.frequency)
+            self.gripper.schedule_waypoint(
+                pose=[new_actions[i][-1]],
+                target_time=new_timestamps[i],
+            )
 
         # record actions
         if self.action_accumulator is not None:

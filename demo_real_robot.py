@@ -111,7 +111,7 @@ def main(
             # video recording quality, lower is better (but slower).
             video_crf=21,
             shm_manager=shm_manager,
-            max_pos_speed=128,
+            max_pos_speed=192,
             max_rot_speed=0.75,
         ) as env:
             cv2.setNumThreads(1)
@@ -135,6 +135,7 @@ def main(
 
             timer: SecTimeCounter = SecTimeCounter(time_limit_mode)
             while not stop and env.robot.ready_servo.is_set():
+                collect_time = time.time()
                 # calculate timing
                 t_cycle_end = t_start + (iter_idx + 1) * dt
                 t_sample = t_cycle_end - command_latency
@@ -198,16 +199,12 @@ def main(
                         )
                     elif key_stroke == Key.backspace:
                         # Delete the most recent recorded episode
-                        if click.confirm("Are you sure to drop an episode?"):
-                            env.drop_episode()
-                            key_counter.clear()
-                            is_recording = False
+                        # if click.confirm("Are you sure to drop an episode?"):
+                        env.drop_episode()
+                        key_counter.clear()
+                        is_recording = False
 
                 stage = key_counter[Key.space]
-
-                # set target_pose with latest value
-                # target_pose[:3] = obs["robot_eef_pos"][-1]
-                # target_pose[3:] = obs["robot_eef_rot"][-1]
 
                 # visualize
                 vis_img = obs[f"camera_{vis_camera_idx}"][-1, :, :, ::-1].copy()
@@ -277,6 +274,7 @@ def main(
                     stages=[stage],
                 )
                 precise_wait(t_cycle_end)
+                # print(f"Collect freq: {1 / (time.time() - collect_time):.2f} Hz")
                 iter_idx += 1
 
 
