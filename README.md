@@ -1,4 +1,4 @@
-# Coppeliasim-Python
+# KUKA-Controller
 
 Coppeliasim-Python provides users an easy tool to manipulate robots in CoppeliaSim with SpaceMouse (3D Mouse). 
 
