@@ -146,7 +146,7 @@ Add some supplement files in diffusion_policy. (Before doing this, make sure you
 [KUKA-Controller] $ cp codebase/sup_files/config/task/real_pusht_image.yaml codebase/diffusion_policy/diffusion_policy/dataset/config/task
 ```
 
-The modify the config files including specific task name and dataset path. For example, if you decide to train your model with `train_diffusion_transformer_real_hybrid_workspace.yaml`, first you need to replace `task: real_pusht_image` with `task: task: real_pusht_image`, then replace `dataset_path` with your desired path in `real_pusht_image.yaml`.
+The modify the config files including specific task name and dataset path. For example, if you decide to train your model with `train_diffusion_transformer_real_hybrid_workspace.yaml`, first you need to replace `task: real_pusht_image` with `task: real_pusht_image`, then replace `dataset_path` with your desired path in `real_pusht_image.yaml`.
 
 Just use Diffusion Policy to train that model with our collected data.
 ```shell
