@@ -160,9 +160,9 @@ def main(
     ckpt_path = input_path
     payload = torch.load(open(ckpt_path, "rb"), pickle_module=dill)
     cfg = payload["cfg"]
-    cfg._target_ = "codebase.diffusion_policy.workspace.train_diffusion_transformer_hybrid_workspace.TrainDiffusionTransformerHybridWorkspace"
-    cfg.policy._target_ = "codebase.diffusion_policy.policy.diffusion_transformer_hybrid_image_policy.DiffusionTransformerHybridImagePolicy"
-    cfg.ema._target_ = "codebase.diffusion_policy.model.diffusion.ema_model.EMAModel"
+    cfg._target_ = "codebase.diffusion_policy.diffusion_policy.workspace.train_diffusion_transformer_hybrid_workspace.TrainDiffusionTransformerHybridWorkspace"
+    cfg.policy._target_ = "codebase.diffusion_policy.diffusion_policy.policy.diffusion_transformer_hybrid_image_policy.DiffusionTransformerHybridImagePolicy"
+    cfg.ema._target_ = "codebase.diffusion_policy.diffusion_policy.model.diffusion.ema_model.EMAModel"
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace: BaseWorkspace = cls(cfg)
