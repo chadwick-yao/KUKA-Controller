@@ -99,7 +99,7 @@ def main(
 
     # load checkpoint
     ckpt_path = input_path
-    payload = torch.load(open(ckpt_path, "rb"), map_location='cpu', pickle_module=dill)
+    payload = torch.load(open(ckpt_path, "rb"), map_location="cpu", pickle_module=dill)
     cfg = payload["cfg"]
     cfg._target_ = "codebase." + cfg._target_
     cfg.policy._target_ = "codebase." + cfg.policy._target_
@@ -127,7 +127,7 @@ def main(
     print("steps_per_inference:", steps_per_inference)
 
     bridge = CvBridge()
-    
+
     rospy.init_node("eval_real_ros")
     obs_robot1 = Subscriber("follow1_pos_back", PosCmdWithHeader)
     # obs_robot2 = Subscriber("follow1_pos_back", PosCmdWithHeader)
@@ -137,8 +137,10 @@ def main(
     control_robot1 = rospy.Publisher("follow_pos_cmd_1", PosCmd, queue_size=10)
     # control_robot2 = rospy.Publisher("follow_pos_cmd_2", PosCmd, queue_size=10)
     msg_queue = ml.Queue()
-    
-    ats = ApproximateTimeSynchronizer([obs_robot1, image_robot1, msg_queue], queue_size=10, slop=0.1)
+
+    ats = ApproximateTimeSynchronizer(
+        [obs_robot1, image_robot1, msg_queue], queue_size=10, slop=0.1
+    )
     ats.registerCallback(callback)
     rate = rospy.Rate(frequency)
 
@@ -157,9 +159,7 @@ def main(
                 )
                 obs_dict = dict_apply(
                     obs_dict_np,
-                    lambda x: torch.from_numpy(x)
-                    .unsqueeze(0)
-                    .to(device),
+                    lambda x: torch.from_numpy(x).unsqueeze(0).to(device),
                 )
 
                 for k, v in obs_dict.items():
@@ -180,12 +180,12 @@ def main(
                 control_msg.pitch = action[i][4]
                 control_msg.yaw = action[i][5]
                 control_msg.gripper = action[i][6]
-                control_robot1.publish(control_msg)   
+                control_robot1.publish(control_msg)
                 rate.sleep()
 
         rate.sleep()
-                
-                
+
+
 def get_observations(msg_queue, obs_dim, obs_res):
     """
     Fetches and processes observations from a message queue.
@@ -206,27 +206,40 @@ def get_observations(msg_queue, obs_dim, obs_res):
 
         for _ in range(obs_dim):
             obs_msg = msg_queue.get()
-            obs_robot1_msg = obs_msg['obs_robot1']
-            image_robot1_msg = obs_msg['image_robot1']
-            timestamp = obs_msg['time']
-            
+            obs_robot1_msg = obs_msg["obs_robot1"]
+            image_robot1_msg = obs_msg["image_robot1"]
+            timestamp = obs_msg["time"]
+
             # Append the end-effector pose
-            eef_pose = np.vstack((eef_pose, np.array(
-                [obs_robot1_msg.x, obs_robot1_msg.y, obs_robot1_msg.z, 
-                 obs_robot1_msg.roll, obs_robot1_msg.pitch, obs_robot1_msg.yaw], 
-                dtype=np.float32
-            )))
-            
+            eef_pose = np.vstack(
+                (
+                    eef_pose,
+                    np.array(
+                        [
+                            obs_robot1_msg.x,
+                            obs_robot1_msg.y,
+                            obs_robot1_msg.z,
+                            obs_robot1_msg.roll,
+                            obs_robot1_msg.pitch,
+                            obs_robot1_msg.yaw,
+                        ],
+                        dtype=np.float32,
+                    ),
+                )
+            )
+
             # Append the gripper pose
-            gripper_pose = np.vstack((gripper_pose, np.array([obs_robot1_msg.gripper], dtype=np.float32)))
-            
+            gripper_pose = np.vstack(
+                (gripper_pose, np.array([obs_robot1_msg.gripper], dtype=np.float32))
+            )
+
             # Convert and append the camera image
             image_robot1_cv2 = bridge.imgmsg_to_cv2(image_robot1_msg, "bgr8")
             camera_rgb = np.stack((camera_rgb, image_robot1_cv2))
-            
+
             # Append the timestamp
             obs_timestamp = np.vstack((obs_timestamp, timestamp))
-            
+
         # Update the observation data dictionary
         obs_data.update(
             {
@@ -236,21 +249,23 @@ def get_observations(msg_queue, obs_dim, obs_res):
                 "timestamp": obs_timestamp,
             }
         )
-        
+
     return obs_data
+
 
 def callback(obs_robot1, image_robot1, msg):
 
     time = rospy.Time.now()
     obs_data = dict()
-    obs_data['obs_robot1'] = obs_robot1
+    obs_data["obs_robot1"] = obs_robot1
     # obs_data['obs_robot2'] = obs_robot2
     # obs_data['image_global'] = image_global
-    obs_data['image_robot1'] = image_robot1
+    obs_data["image_robot1"] = image_robot1
     # obs_data['image_robot2'] = image_robot2
-    obs_data['time'] = time
-    
+    obs_data["time"] = time
+
     msg.put(obs_data)
+
 
 if __name__ == "__main__":
     main()
