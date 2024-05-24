@@ -22,9 +22,9 @@ from common.spacemouse_shared_memory import Spacemouse
 from common.precise_sleep import precise_sleep, precise_wait
 
 from codebase.real_world.real_env import RealEnv
-from codebase.diffusion_policy.workspace.base_workspace import BaseWorkspace
-from codebase.diffusion_policy.policy.base_image_policy import BaseImagePolicy
-from codebase.diffusion_policy.common.pytorch_util import dict_apply
+from codebase.diffusion_policy.diffusion_policy.workspace.base_workspace import BaseWorkspace
+from codebase.diffusion_policy.diffusion_policy.policy.base_image_policy import BaseImagePolicy
+from codebase.diffusion_policy.diffusion_policy.common.pytorch_util import dict_apply
 
 from utils.cv2_utils import get_image_transform
 from utils.real_inference_utils import get_real_obs_dict, get_real_obs_resolution
