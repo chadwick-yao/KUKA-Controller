@@ -1,11 +1,12 @@
 from typing import Union
 import numbers
 import numpy as np
-import scipy.spatial.transform as st
+import scipy.interpolate as si
 
 
-def rotation_distance(a: st.Rotation, b: st.Rotation) -> float:
-    return (b * a.inv()).magnitude()
+def rotation_distance(a, b) -> float:
+    rot_dist = np.linalg.norm(b - a)
+    return rot_dist
 
 
 class JposTrajectoryInterpolator:
@@ -27,21 +28,21 @@ class JposTrajectoryInterpolator:
             self.single_step = False
             assert np.all(times[1:] >= times[:-1])
 
-            self.jpos_interp = st.Slerp(times, jposes)
+            self.jpos_interp = si.interp1d(times, jposes, axis=0, assume_sorted=True)
 
     @property
     def times(self) -> np.ndarray:
         if self.single_step:
             return self._times
         else:
-            return self.jpos_interp.times
+            return self.jpos_interp.x
 
     @property
     def jposes(self) -> np.ndarray:
         if self.single_step:
             return self._jposes
         else:
-            return self.jpos_interp.rotations
+            return self.jpos_interp.y
 
     def trim(self, start_t: float, end_t: float) -> "JposTrajectoryInterpolator":
         assert start_t <= end_t

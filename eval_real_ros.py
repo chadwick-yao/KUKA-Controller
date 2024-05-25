@@ -1,3 +1,6 @@
+import sys
+sys.path.append("/home/dc/mambaforge/envs/robodiff/lib/python3.9/site-packages")
+sys.path.append("/home/dc/Desktop/dp_ycw/follow_control/follow1/src/arm_control/scripts/KUKA-Controller")
 import time
 import copy
 import click
@@ -15,16 +18,11 @@ import scipy.spatial.transform as st
 from einops import repeat
 from ipdb import set_trace
 from omegaconf import OmegaConf
-from termcolor import colored, cprint
-from multiprocessing.managers import SharedMemoryManager
-
-from common.spacemouse_shared_memory import Spacemouse
 from common.precise_sleep import precise_sleep, precise_wait
 
-from codebase.real_world.real_env import RealEnv
-from codebase.diffusion_policy.workspace.base_workspace import BaseWorkspace
-from codebase.diffusion_policy.policy.base_image_policy import BaseImagePolicy
-from codebase.diffusion_policy.common.pytorch_util import dict_apply
+from codebase.diffusion_policy.diffusion_policy.workspace.base_workspace import BaseWorkspace
+from codebase.diffusion_policy.diffusion_policy.policy.base_image_policy import BaseImagePolicy
+from codebase.diffusion_policy.diffusion_policy.common.pytorch_util import dict_apply
 
 from utils.cv2_utils import get_image_transform
 from utils.real_inference_utils import get_real_obs_dict, get_real_obs_resolution
@@ -35,7 +33,6 @@ from message_filters import ApproximateTimeSynchronizer, Subscriber
 from arm_control.msg import JointInformation
 from arm_control.msg import JointControl
 from arm_control.msg import PosCmd
-from arm_control.msg import PosCmdWithHeader
 from sensor_msgs.msg import Image
 from threading import Lock
 from cv_bridge import CvBridge
@@ -72,200 +69,161 @@ Press "S" to stop evaluation and gain control back.
     required=True,
     help="Path to checkpoint",
 )
+
 @click.option(
-    "--output_path",
-    "-op",
-    required=True,
-    help="Directory to save recording",
-)
-@click.option(
-    "--max_duration", "-md", default=5, help="Max duration for each epoch in seconds."
+    "--max_duration", "-md", default=500, help="Max duration for each epoch in seconds."
 )
 @click.option(
     "--steps_per_inference",
     "-si",
-    default=6,
+    default=8,
     type=int,
     help="Action horizon for inference.",
 )
 # @profile
 def main(
     input_path,
-    output_path,
-    frequency,
     max_duration,
     steps_per_inference,
 ):
-
+    global obs_ls, cnt, cfg, control_robot2, policy, max_steps, all_time_actions, ts, horizon
+    ts = 0
+    max_steps = max_duration
     # load checkpoint
     ckpt_path = input_path
     payload = torch.load(open(ckpt_path, "rb"), map_location="cpu", pickle_module=dill)
     cfg = payload["cfg"]
-    cfg._target_ = "codebase." + cfg._target_
-    cfg.policy._target_ = "codebase." + cfg.policy._target_
-    cfg.ema._target_ = "codebase." + cfg.ema._target_
+    cfg._target_ = "codebase.diffusion_policy." + cfg._target_
+    cfg.policy._target_ = "codebase.diffusion_policy." + cfg.policy._target_
+    cfg.ema._target_ = "codebase.diffusion_policy." + cfg.ema._target_
 
     cls = hydra.utils.get_class(cfg._target_)
     workspace: BaseWorkspace = cls(cfg)
     workspace.load_payload(payload, exclude_keys=None, include_keys=None)
 
     # policy
-    policy: BaseImagePolicy = workspace.model
+    policy = workspace.model
     if cfg.training.use_ema:
         policy = workspace.ema_model
     device = torch.device("cuda:0")
     policy.eval().to(device)
     policy.reset()
-
+    all_time_actions = torch.zeros([max_duration, max_duration+policy.horizon, policy.action_dim]).cuda()
     ## set inference params
-    policy.num_inference_steps = 16  # DDIM inference iterations
+    policy.num_inference_steps = 12  # DDIM inference iterations
     policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
+    horizon = policy.n_action_steps
 
     obs_res = get_real_obs_resolution(cfg.task.shape_meta)
     n_obs_steps = cfg.n_obs_steps
     print("n_obs_steps: ", n_obs_steps)
     print("steps_per_inference:", steps_per_inference)
-
-    bridge = CvBridge()
+    obs_ls = list()
+    cnt = n_obs_steps
 
     rospy.init_node("eval_real_ros")
-    obs_robot1 = Subscriber("follow1_pos_back", PosCmdWithHeader)
-    # obs_robot2 = Subscriber("follow1_pos_back", PosCmdWithHeader)
-    # image_global = Subscriber("mid_camera", Image)
-    image_robot1 = Subscriber("left_camera", Image)
-    # image_robot2 = Subscriber("right_camera", Image)
-    control_robot1 = rospy.Publisher("follow_pos_cmd_1", PosCmd, queue_size=10)
-    # control_robot2 = rospy.Publisher("follow_pos_cmd_2", PosCmd, queue_size=10)
-    msg_queue = ml.Queue()
-
+    eef_qpos = Subscriber("follow2_pos_back", PosCmd)
+    qpos = Subscriber("joint_information2",JointInformation)
+    mid = Subscriber("mid_camera", Image)
+    right = Subscriber("right_camera", Image)
+    control_robot2 = rospy.Publisher("test_right", JointControl, queue_size=10)
     ats = ApproximateTimeSynchronizer(
-        [obs_robot1, image_robot1, msg_queue], queue_size=10, slop=0.1
+        [eef_qpos, qpos, mid, right], queue_size=10, slop=0.1
     )
     ats.registerCallback(callback)
-    rate = rospy.Rate(frequency)
 
-    while not rospy.is_shutdown():
-        obs_data = get_observations(msg_queue, n_obs_steps, obs_res)
+    rospy.spin()
 
-        if obs_data:
-            while not msg_queue.empty():
-                msg_queue.get()
+def callback(eef_qpos, qpos, image_mid,image_right):
+    global obs_ls, cnt, cfg, control_robot2, policy, max_steps, all_time_actions, ts, horizon
+    st=time.time()
+    en=time.time()
+    if ts < max_steps:
+        if len(obs_ls) < cnt:
+            print("Get Observation!")
+            st=time.time()
+            obs_data = dict()
+            # prepreocess low-dim info
+            obs_data["eef_qpos"] = np.array([eef_qpos.x, eef_qpos.y, eef_qpos.z, eef_qpos.roll, eef_qpos.pitch, eef_qpos.yaw, eef_qpos.gripper])
+            obs_data["qpos"] = qpos.joint_pos
 
-            # run inference
+            mid = image_mid
+            right = image_right
+            # process images observation
+            bridge = CvBridge()
+            mid = bridge.imgmsg_to_cv2(mid, "bgr8")
+            right = bridge.imgmsg_to_cv2(right, "bgr8")
+            
+            obs_data["mid"] = mid
+            obs_data["right"] = right
+
+            # canvas = np.zeros((480, 1280, 3), dtype=np.uint8)
+
+            # # 将图像复制到画布的特定位置
+            # canvas[:, :640, :] = mid
+            # canvas[:, 640:1280, :] = right
+
+            # # 在一个窗口中显示排列后的图像
+            # cv2.imshow('Multi Camera Viewer', canvas)
+            # if cv2.waitKey(1) == ord("q"):
+            #     pass
+
+            obs_ls.append(obs_data)
+        else:
+            print("Exe Actions")
+            obs = merge_obs_dict(obs_ls)
             with torch.no_grad():
-                s = time.time()
                 obs_dict_np = get_real_obs_dict(
-                    env_obs=obs_data, shape_meta=cfg.task.shape_meta
+                    env_obs=obs, shape_meta=cfg.task.shape_meta
                 )
                 obs_dict = dict_apply(
                     obs_dict_np,
-                    lambda x: torch.from_numpy(x).unsqueeze(0).to(device),
+                    lambda x: torch.from_numpy(x)
+                    .unsqueeze(0)
+                    .to(torch.device("cuda:0")),
                 )
 
-                for k, v in obs_dict.items():
-                    if len(v.shape) == 2:
-                        obs_dict[k] = torch.unsqueeze(v, 2)
                 result = policy.predict_action(obs_dict)
-                # this action starts from the first obs step
                 action = (
-                    result["action"][0].detach().to("cpu").numpy()
-                )  # 1 n_acts 7 -> n_acts 7
-
-            for i in range(action.shape[0]):
-                control_msg = PosCmd()
-                control_msg.x = action[i][0]
-                control_msg.y = action[i][1]
-                control_msg.z = action[i][2]
-                control_msg.roll = action[i][3]
-                control_msg.pitch = action[i][4]
-                control_msg.yaw = action[i][5]
-                control_msg.gripper = action[i][6]
-                control_robot1.publish(control_msg)
-                rate.sleep()
-
-        rate.sleep()
-
-
-def get_observations(msg_queue, obs_dim, obs_res):
-    """
-    Fetches and processes observations from a message queue.
-
-    :param msg_queue: The message queue to fetch observations from.
-    :param obs_dim: The number of observations to fetch.
-    :param bridge: The image conversion bridge.
-    :param obs_res: The resolution of the camera image.
-    :return: A dictionary with processed observations.
-    """
-    bridge = CvBridge()
-    obs_data = dict()
-    if msg_queue.qsize() >= obs_dim:
-        eef_pose = np.empty((0, 6))
-        gripper_pose = np.empty((0, 1))
-        camera_rgb = np.empty((0,) + obs_res + (3,))
-        obs_timestamp = np.empty((0, 1))
-
-        for _ in range(obs_dim):
-            obs_msg = msg_queue.get()
-            obs_robot1_msg = obs_msg["obs_robot1"]
-            image_robot1_msg = obs_msg["image_robot1"]
-            timestamp = obs_msg["time"]
-
-            # Append the end-effector pose
-            eef_pose = np.vstack(
-                (
-                    eef_pose,
-                    np.array(
-                        [
-                            obs_robot1_msg.x,
-                            obs_robot1_msg.y,
-                            obs_robot1_msg.z,
-                            obs_robot1_msg.roll,
-                            obs_robot1_msg.pitch,
-                            obs_robot1_msg.yaw,
-                        ],
-                        dtype=np.float32,
-                    ),
+                    result["action"][0].detach()
                 )
-            )
 
-            # Append the gripper pose
-            gripper_pose = np.vstack(
-                (gripper_pose, np.array([obs_robot1_msg.gripper], dtype=np.float32))
-            )
-
-            # Convert and append the camera image
-            image_robot1_cv2 = bridge.imgmsg_to_cv2(image_robot1_msg, "bgr8")
-            camera_rgb = np.stack((camera_rgb, image_robot1_cv2))
-
-            # Append the timestamp
-            obs_timestamp = np.vstack((obs_timestamp, timestamp))
-
-        # Update the observation data dictionary
-        obs_data.update(
-            {
-                "eef_pose": eef_pose,
-                "gripper_pose": gripper_pose,
-                "camera_rgb": camera_rgb,
-                "timestamp": obs_timestamp,
-            }
-        )
-
-    return obs_data
+            right_control = JointControl()
+            all_time_actions[[ts], ts:ts+horizon] = action
+            # actions_for_curr_step = all_time_actions[:, ts]
+            # actions_populated = torch.all(actions_for_curr_step != 0, axis=1)
+            # actions_for_curr_step = actions_for_curr_step[actions_populated]
+            # k = 0.01
+            # exp_weights = np.exp(-k * np.arange(len(actions_for_curr_step)))
+            # exp_weights = exp_weights / exp_weights.sum()
+            # exp_weights = torch.from_numpy(exp_weights).cuda().unsqueeze(dim=1)
+            # raw_action = (actions_for_curr_step * exp_weights).sum(dim=0, keepdim=True)
+            # print(raw_action[0].to("cpu").numpy())
+            right_control.joint_pos = action[0].to("cpu").numpy()
+            control_robot2.publish(right_control)
+            print(time.time() - st)
+            obs_ls = []
 
 
-def callback(obs_robot1, image_robot1, msg):
+def merge_obs_dict(dict_ls):
+    eef_ls = []
+    qpos_ls = []
+    mid_ls = []
+    right_ls = []
+    for item in dict_ls:
+        eef_ls.append(item["eef_qpos"])
+        qpos_ls.append(item["qpos"])
+        mid_ls.append(item["mid"])
+        right_ls.append(item["right"])
 
-    time = rospy.Time.now()
-    obs_data = dict()
-    obs_data["obs_robot1"] = obs_robot1
-    # obs_data['obs_robot2'] = obs_robot2
-    # obs_data['image_global'] = image_global
-    obs_data["image_robot1"] = image_robot1
-    # obs_data['image_robot2'] = image_robot2
-    obs_data["time"] = time
+    obs_dict = {
+        "eef_qpos": np.array(eef_ls),
+        "qpos": np.array(qpos_ls),
+        "mid": np.array(mid_ls),
+        "right": np.array(right_ls),
+    }
 
-    msg.put(obs_data)
-
+    return obs_dict
 
 if __name__ == "__main__":
     main()
