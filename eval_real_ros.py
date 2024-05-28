@@ -126,7 +126,7 @@ def main(
     policy.reset()
 
     ## set inference params
-    policy.num_inference_steps = 12  # DDIM inference iterations
+    policy.num_inference_steps = 16  # DDIM inference iterations
     policy.n_action_steps = policy.horizon - policy.n_obs_steps + 1
 
     obs_res = get_real_obs_resolution(cfg.task.shape_meta)
@@ -139,8 +139,8 @@ def main(
     shm_manager.start()
 
     examples = dict()
-    examples["mid_rgb"] = np.empty(shape=obs_res + (3,), dtype=np.uint8)
-    examples["right_rgb"] = np.empty(shape=obs_res + (3,), dtype=np.uint8)
+    examples["mid"] = np.empty(shape=obs_res[::-1] + (3,), dtype=np.uint8)
+    examples["right"] = np.empty(shape=obs_res[::-1] + (3,), dtype=np.uint8)
     examples["eef_qpos"] = np.empty(shape=(7,), dtype=np.float64)
     examples["qpos"] = np.empty(shape=(7,), dtype=np.float64)
     examples["timestamp"] = 0.0
@@ -163,7 +163,7 @@ def main(
         [eef_qpos, qpos, mid, right], queue_size=10, slop=0.1
     )
     ats.registerCallback(callback)
-    rospy.Rate(frequency)
+    rate = rospy.Rate(frequency)
 
     # data
     last_data = None
@@ -184,7 +184,7 @@ def main(
 
         # get observation
         k = math.ceil(n_obs_steps * (video_capture_fps / frequency))
-        last_data = obs_ring_buffer.get(k=k, out=last_data)
+        last_data = obs_ring_buffer.get_last_k(k=k, out=last_data)
         last_timestamp = last_data["timestamp"][-1]
         obs_align_timestamps = last_timestamp - (np.arange(n_obs_steps)[::-1] * dt)
 
@@ -227,11 +227,11 @@ def main(
         is_new = action_timestamps > (curr_time + action_exec_latency)
 
         if np.sum(is_new) == 0:
-            action = action[-1]
-            action_timestamp = action_timestamp[-1]
+            action = action[[-1]]
             next_step_idx = int(np.ceil((curr_time - eval_t_start) / dt))
             action_timestamp = eval_t_start + (next_step_idx) * dt
             print("Over budget", action_timestamp - curr_time)
+            action_timestamps = np.array([action_timestamp])
         else:
             action = action[is_new]
             action_timestamp = action_timestamps[is_new]
@@ -240,18 +240,17 @@ def main(
         for item in action:
             right_control.joint_pos = item
             control_robot2.publish(right_control)
-            rospy.sleep()
+            rate.sleep()
 
         precise_wait(t_cycle_end - frame_latency)
         iter_idx += steps_per_inference
 
-        print(f"Inference Actual frequency {1/(time.perf_counter() - test_t_start)}")
+        print(f"Inference Actual frequency {steps_per_inference/(time.perf_counter() - test_t_start)}")
 
 
 def callback(eef_qpos, qpos, image_mid, image_right):
     global obs_ring_buffer
 
-    print("Get Observation!")
     mid = image_mid
     right = image_right
     bridge = CvBridge()
@@ -273,13 +272,24 @@ def callback(eef_qpos, qpos, image_mid, image_right):
     # process images observation
     mid = bridge.imgmsg_to_cv2(mid, "bgr8")
     right = bridge.imgmsg_to_cv2(right, "bgr8")
-    obs_data["mid_rgb"] = mid
-    obs_data["right_rgb"] = right
+    obs_data["mid"] = transform(mid)
+    obs_data["right"] = transform(right)
     obs_data["timestamp"] = receive_time
 
     put_data = obs_data
     obs_ring_buffer.put(put_data, wait=False)
 
+
+def transform(data, video_capture_resolution=(640, 480), obs_image_resolution=(320, 240)):
+    color_tf = get_image_transform(
+                input_res=video_capture_resolution,
+                output_res=obs_image_resolution,
+                # obs output rgb
+                bgr_to_rgb=True,
+            )
+    
+    tf_data = color_tf(data)
+    return tf_data
 
 if __name__ == "__main__":
     main()
